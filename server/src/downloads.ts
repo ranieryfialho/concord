@@ -3,13 +3,14 @@ import path from 'node:path';
 import express, { Router } from 'express';
 
 // Desktop installers are published by .github/workflows/desktop.yml into DOWNLOADS_DIR.
-// File names follow `Concord-<version>-<os>-<arch>.<ext>` (see desktop/package.json "artifactName").
+// File names follow `Concord-<version>-<os>-<arch>.<ext>` (see desktop/package.json "artifactName");
+// electron-builder spells the Linux arch x86_64 (AppImage) and amd64 (deb).
 export const DOWNLOADS_DIR = path.resolve(process.env.DOWNLOADS_DIR ?? '/downloads');
 
 const FILE = /^Concord-(\d+\.\d+\.\d+)-(win|mac|linux)-(x64|arm64)\.(exe|dmg|AppImage|deb)$/;
 const OS_LABEL = { win: 'Windows', mac: 'macOS', linux: 'Linux' } as const;
 const OS_ORDER = ['win', 'mac', 'linux'] as const;
-const ARCH_LABEL = { x64: 'Intel / 64-bit', arm64: 'Apple Silicon / ARM64' } as const;
+const ARCH_LABEL = { x64: 'Intel / 64-bit', x86_64: '64-bit', amd64: '64-bit (Debian/Ubuntu)', arm64: 'Apple Silicon / ARM64' } as const;
 
 type Build = { name: string; version: string; os: keyof typeof OS_LABEL; arch: keyof typeof ARCH_LABEL; ext: string; size: number };
 
