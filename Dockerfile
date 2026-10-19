@@ -2,7 +2,8 @@
 FROM node:24-bookworm-slim
 
 WORKDIR /app
-ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
+# Sem binários CUDA do onnxruntime (centenas de MB, só servem com GPU); Whisper roda em CPU.
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 ONNXRUNTIME_NODE_INSTALL=skip
 
 COPY package.json package-lock.json ./
 COPY server/package.json server/
