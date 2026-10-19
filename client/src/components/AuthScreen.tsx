@@ -1,5 +1,7 @@
 import { type FormEvent, useState } from 'react';
+import { Download } from 'lucide-react';
 import { api } from '../api';
+import { native } from '../native';
 
 export function AuthScreen({ onAuthenticated }: { onAuthenticated: (token: string) => void }) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -70,6 +72,11 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (token: strin
           </button>
         </p>
       </form>
+      {!native && (
+        <a className="auth-download" href="/download">
+          <Download size={16} /> Baixar o app para desktop
+        </a>
+      )}
     </div>
   );
 }

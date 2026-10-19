@@ -412,6 +412,17 @@ h4 {
   gap: 8px;
   box-shadow: var(--shadow-lg);
 }
+.auth-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 14px;
+  text-decoration: none;
+}
+.auth-download:hover {
+  color: var(--accent);
+}
 .auth-card h1 {
   font-size: 23px;
   margin-top: 8px;
@@ -575,6 +586,18 @@ h4 {
   background: transparent;
 }
 .rail-button.add:hover {
+  background: var(--green);
+  color: white;
+}
+.rail-button.download {
+  display: grid;
+  place-items: center;
+  color: var(--green);
+  text-decoration: none;
+  box-shadow: none;
+  background: transparent;
+}
+.rail-button.download:hover {
   background: var(--green);
   color: white;
 }

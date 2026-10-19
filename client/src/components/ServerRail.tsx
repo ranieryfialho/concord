@@ -1,5 +1,6 @@
-import { Plus } from 'lucide-react';
+import { Download, Plus } from 'lucide-react';
 import { HOME, dmChannels, guildMentions, guildUnread, openModal, selectGuild, useStore } from '../store';
+import { native } from '../native';
 import { cx } from '../utils';
 import { GuildIcon } from './common';
 
@@ -48,6 +49,13 @@ export function ServerRail() {
           <Plus size={24} />
         </button>
       </div>
+      {!native && (
+        <div className="rail-item">
+          <a className="rail-button download" href="/download" target="_blank" rel="noreferrer" title="Baixar o app para desktop">
+            <Download size={22} />
+          </a>
+        </div>
+      )}
     </nav>
   );
 }
