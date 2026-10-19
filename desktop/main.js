@@ -17,7 +17,8 @@ const {
 const fs = require('node:fs');
 const path = require('node:path');
 
-const WEBAPP_URL = process.env.CONCORD_URL || 'http://localhost:3001';
+// Installed builds talk to production; `npm run desktop` in the repo keeps using the local server.
+const WEBAPP_URL = process.env.CONCORD_URL || (app.isPackaged ? 'https://concord.rafiweb.com.br' : 'http://localhost:3001');
 const WEBAPP_ORIGIN = new URL(WEBAPP_URL).origin;
 const SETTINGS_KEYS = new Set(['MINIMIZE_TO_TRAY', 'START_MINIMIZED']);
 

@@ -5,9 +5,71 @@
   "description": "Concord desktop shell",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --publish never"
   },
   "devDependencies": {
-    "electron": "^44.9.0"
+    "electron": "^44.9.0",
+    "electron-builder": "^26.15.3"
+  },
+  "author": "Raniery Fialho",
+  "build": {
+    "appId": "br.com.rafiweb.concord",
+    "productName": "Concord",
+    "artifactName": "Concord-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "splash.html",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.social-networking",
+      "identity": null
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Network;InstantMessaging",
+      "maintainer": "Raniery Fialho <noreply@rafiweb.com.br>"
+    }
   }
 }

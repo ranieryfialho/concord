@@ -12,11 +12,14 @@ services:
       TRUST_PROXY: "1"
       TURN_URLS: "turn:${TURN_HOST}:3478?transport=udp,turn:${TURN_HOST}:3478?transport=tcp"
       TURN_SECRET: ${TURN_SECRET}
+      DOWNLOADS_DIR: /downloads
       LIVEKIT_URL: ${LIVEKIT_URL:-}
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
     volumes:
       - concord-data:/data
+      # Instaladores do app desktop, enviados por .github/workflows/desktop.yml.
+      - ./downloads:/downloads:ro
     networks:
       - proxy
     # Whisper não pode sufocar os outros sites da VPS.

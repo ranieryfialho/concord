@@ -1,0 +1,78 @@
+name: Build do app desktop
+
+# Gera os instaladores (Windows, macOS, Linux) e publica na VPS, de onde a página
+# /download do Concord os serve. O repositório é privado, então não usamos GitHub Releases.
+#   Nova versão: suba "version" em desktop/package.json, depois
+#   git tag desktop-v0.2.0 && git push --tags      (ou Actions > Run workflow)
+on:
+  push:
+    tags: [ "desktop-v*" ]
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifacts: "desktop/dist/*.exe"
+          - os: macos-latest
+            artifacts: "desktop/dist/*.dmg"
+          - os: ubuntu-latest
+            artifacts: |
+              desktop/dist/*.AppImage
+              desktop/dist/*.deb
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependências do desktop
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        run: npm ci --workspace desktop --include=dev
+
+      - name: Gerar instalador
+        run: npm run dist -w desktop
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.os }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: installers
+          merge-multiple: true
+
+      - name: Conferir arquivos
+        run: ls -lh installers
+
+      - name: Enviar para a VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "installers/*"
+          target: "~/concord/downloads"
+          strip_components: 1
+          timeout: 15m

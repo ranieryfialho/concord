@@ -6,6 +6,7 @@ import express, { type ErrorRequestHandler } from 'express';
 import multer from 'multer';
 import { requireAuth } from './auth.js';
 import { DATA_DIR, UPLOAD_DIR } from './db.js';
+import { downloadsRouter } from './downloads.js';
 import { attachGateway } from './gateway.js';
 import { limits } from './ratelimit.js';
 import { authRouter } from './routes/auth.js';
@@ -38,6 +39,8 @@ app.use(
     },
   }),
 );
+
+app.use(downloadsRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
