@@ -5,6 +5,7 @@ import { Layout } from './components/Layout';
 import { Spinner } from './components/common';
 import { TitleBar } from './components/TitleBar';
 import { gateway } from './gateway';
+import { consumePendingInvite } from './invite';
 import { resetStore, useStore } from './store';
 
 export function App() {
@@ -31,6 +32,11 @@ export function App() {
     }
     return () => gateway.disconnect();
   }, [token]);
+
+  const ready = !!me;
+  useEffect(() => {
+    if (ready) consumePendingInvite();
+  }, [ready]);
 
   if (!token) {
     return (

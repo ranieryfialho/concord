@@ -16,7 +16,6 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { api } from '../api';
-import { native } from '../native';
 import { P, has } from '../permissions';
 import { toggleTheme, useTheme } from '../theme';
 import { HOME, channelLabel, nameOf, openModal, selectChannel, setState, toast, useStore } from '../store';
@@ -24,12 +23,8 @@ import type { UserStatus } from '../types';
 import { PRESENCE_LABEL, cx } from '../utils';
 import { useVoice, voice } from '../voice';
 import { Avatar, StatusDot } from './common';
-
-export function startScreenShare() {
-  // The desktop shell shows our own source picker; browsers use their native one.
-  if (native) openModal({ type: 'screenPicker' });
-  else void voice.startScreenShare();
-}
+import { NoiseButton } from './NoisePopover';
+import { onScreenShareClick } from './StreamMenu';
 
 function VoiceConnection() {
   const channelId = useVoice((s) => s.channelId);
@@ -61,6 +56,7 @@ function VoiceConnection() {
             </button>
           </div>
         </div>
+        <NoiseButton />
         <button className="icon-btn" title="Desconectar" onClick={() => voice.leave()}>
           <PhoneOff size={20} />
         </button>
@@ -72,8 +68,8 @@ function VoiceConnection() {
           </button>
           <button
             className={cx('btn btn-secondary', selfStream && 'on')}
-            title="Compartilhar tela"
-            onClick={() => (selfStream ? voice.stopScreenShare() : startScreenShare())}
+            title={selfStream ? 'Opções da transmissão' : 'Compartilhar tela'}
+            onClick={onScreenShareClick}
           >
             {selfStream ? <MonitorOff size={18} /> : <Monitor size={18} />}
           </button>

@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode, useState } from 'react';
+import { inviteCodeFromUrl, openInvite } from '../invite';
 import { nameOf, openModal, useStore } from '../store';
 
 // Discord-flavoured markdown subset rendered straight to React elements (never raw HTML).
@@ -44,12 +45,27 @@ function inline(text: string, key: string, guildId: string | null): ReactNode[] 
     else if (m[6]) out.push(<s key={k}>{inline(tok.slice(2, -2), k, guildId)}</s>);
     else if (m[7]) out.push(<Spoiler key={k}>{inline(tok.slice(2, -2), k, guildId)}</Spoiler>);
     else if (m[8]) out.push(<Mention key={k} userId={tok.slice(2, -1)} guildId={guildId} />);
-    else if (m[9])
+    else if (m[9]) {
+      const invite = inviteCodeFromUrl(tok);
       out.push(
-        <a key={k} href={tok} target="_blank" rel="noreferrer noopener">
+        <a
+          key={k}
+          href={tok}
+          target="_blank"
+          rel="noreferrer noopener"
+          onClick={
+            invite
+              ? (e) => {
+                  e.preventDefault(); // our own invite links open inside the app
+                  openInvite(invite);
+                }
+              : undefined
+          }
+        >
           {tok}
         </a>,
       );
+    }
     last = re.lastIndex;
   }
   if (last < text.length) out.push(text.slice(last));

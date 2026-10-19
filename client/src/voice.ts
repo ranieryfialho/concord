@@ -1,7 +1,8 @@
-import type { Participant, RemoteTrack, Room, Track } from 'livekit-client';
+import type { LocalAudioTrack, Participant, RemoteAudioTrack, RemoteTrack, Room, Track } from 'livekit-client';
 import { create } from 'zustand';
 import { api } from './api';
 import { gateway } from './gateway';
+import { type InputProfile, MicPipeline, type MicPrefs, type NoiseMode, micConstraints, micProcessor, micSettings } from './mic';
 import { sounds } from './sounds';
 import { SpeechCapture } from './speech';
 import { getState, setState, toast } from './store';
@@ -41,12 +42,97 @@ interface VoiceUI {
   userVolumes: Record<string, number>;
   /** People muted just for me. */
   localMuted: Record<string, boolean>;
+  /** Same as above, for the audio of each person's screen share. */
+  streamVolumes: Record<string, number>;
+  streamMuted: Record<string, boolean>;
+  /** Microphone processing (see mic.ts). */
+  inputProfile: InputProfile;
+  echoCancellation: boolean;
+  noiseSuppression: NoiseMode;
+  autoGainControl: boolean;
+  sensitivityAuto: boolean;
+  inputThreshold: number;
+  inputVolume: number;
+  /** Everything we play, in percent (0–200). */
+  outputVolume: number;
+  /** Push-to-talk: the mic only transmits while the key is held (with the app focused). */
+  pttEnabled: boolean;
+  /** KeyboardEvent.code, or "Mouse3"/"Mouse4" for side mouse buttons. */
+  pttKey: string;
+  /** Keeps transmitting this long after the key is released, in ms. */
+  pttDelay: number;
+  /** Push-to-talk key currently held. */
+  pttActive: boolean;
+  /** Voice stage shows only tiles with camera or screen. */
+  hideNoVideo: boolean;
+  /** Screen share quality preset. */
+  streamQuality: StreamQuality;
+  /** Send the computer's audio with the screen share. */
+  streamAudio: boolean;
 }
 
+export type StreamQuality = '720p30' | '1080p30' | '1080p60' | 'source';
+
+export const STREAM_QUALITIES: Record<StreamQuality, { label: string; short: string; width?: number; height?: number; fps: number; bitrate: number }> = {
+  '720p30': { label: '720p · 30 FPS', short: '720p 30FPS', width: 1280, height: 720, fps: 30, bitrate: 2_500_000 },
+  '1080p30': { label: '1080p · 30 FPS', short: '1080p 30FPS', width: 1920, height: 1080, fps: 30, bitrate: 4_500_000 },
+  '1080p60': { label: '1080p · 60 FPS', short: '1080p 60FPS', width: 1920, height: 1080, fps: 60, bitrate: 7_000_000 },
+  source: { label: 'Resolução original · 30 FPS', short: 'Original 30FPS', fps: 30, bitrate: 8_000_000 },
+};
+
 const PREFS_KEY = 'concord.voice';
+const PREF_KEYS = [
+  'selfMute',
+  'selfDeaf',
+  'inputDeviceId',
+  'outputDeviceId',
+  'videoDeviceId',
+  'userVolumes',
+  'localMuted',
+  'streamVolumes',
+  'streamMuted',
+  'inputProfile',
+  'echoCancellation',
+  'noiseSuppression',
+  'autoGainControl',
+  'sensitivityAuto',
+  'inputThreshold',
+  'inputVolume',
+  'outputVolume',
+  'pttEnabled',
+  'pttKey',
+  'pttDelay',
+  'hideNoVideo',
+  'streamQuality',
+  'streamAudio',
+] as const;
 
 function loadPrefs() {
-  const defaults = { selfMute: false, selfDeaf: false, inputDeviceId: '', outputDeviceId: '', videoDeviceId: '', userVolumes: {}, localMuted: {} };
+  const defaults = {
+    selfMute: false,
+    selfDeaf: false,
+    inputDeviceId: '',
+    outputDeviceId: '',
+    videoDeviceId: '',
+    userVolumes: {},
+    localMuted: {},
+    streamVolumes: {},
+    streamMuted: {},
+    inputProfile: 'isolation' as InputProfile,
+    echoCancellation: true,
+    noiseSuppression: 'advanced' as NoiseMode,
+    autoGainControl: true,
+    sensitivityAuto: true,
+    inputThreshold: -50,
+    inputVolume: 100,
+    outputVolume: 100,
+    pttEnabled: false,
+    pttKey: '',
+    pttDelay: 200,
+    hideNoVideo: false,
+    streamQuality: '1080p30' as StreamQuality,
+    streamAudio: true,
+  };
   try {
     return { ...defaults, ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') };
   } catch {
@@ -69,13 +155,14 @@ export const useVoice = create<VoiceUI>()(() => ({
   deviceTick: 0,
   transcriptOpen: false,
   chatOpen: true,
+  pttActive: false,
   ...loadPrefs(),
 }));
 
-function savePrefs() {
-  const { selfMute, selfDeaf, inputDeviceId, outputDeviceId, videoDeviceId, userVolumes, localMuted } = useVoice.getState();
+export function savePrefs() {
+  const state = useVoice.getState();
   try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify({ selfMute, selfDeaf, inputDeviceId, outputDeviceId, videoDeviceId, userVolumes, localMuted }));
+    localStorage.setItem(PREFS_KEY, JSON.stringify(Object.fromEntries(PREF_KEYS.map((k) => [k, state[k]]))));
   } catch {
     /* ignore */
   }
@@ -128,7 +215,87 @@ interface Peer {
   ignoreOffer: boolean;
   queue: Promise<void>;
   senders: Map<string, RTCRtpSender>;
-  audioEls: Map<string, HTMLAudioElement>;
+  /** Remote audio being played, by stream id (microphone and screen audio are separate streams). */
+  outputs: Map<string, RemoteAudio>;
+}
+
+// ---------- Remote audio playback ----------
+
+/** One remote audio stream being played, with its own volume (0 to 2 = 200%). */
+interface RemoteAudio {
+  setGain(gain: number): void;
+  stop(): void;
+}
+
+type SinkCapable = { setSinkId?: (id: string) => Promise<void> };
+
+/**
+ * Plays remote audio through Web Audio: stream → GainNode → speakers. A GainNode goes past 100% and applies
+ * instantly, unlike <audio>.volume. Chrome only pulls a remote WebRTC stream into Web Audio while a media
+ * element is playing it, so each stream also gets a muted <audio>. Echo cancellation still works: Chrome
+ * uses everything it plays as the echo reference. Browsers that can't route a context to the chosen output
+ * device fall back to a plain <audio> per stream (volume up to 100%).
+ */
+class Mixer {
+  private ctx: AudioContext | null = null;
+  private readonly webAudio = typeof AudioContext !== 'undefined' && 'setSinkId' in AudioContext.prototype;
+  private elements = new Set<HTMLAudioElement>(); // fallback mode only
+
+  context(): AudioContext {
+    if (!this.ctx) {
+      this.ctx = new AudioContext({ latencyHint: 'interactive' });
+      this.setSink(useVoice.getState().outputDeviceId);
+    }
+    if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => {});
+    return this.ctx;
+  }
+
+  play(stream: MediaStream): RemoteAudio {
+    const el = new Audio();
+    el.autoplay = true;
+    el.srcObject = stream;
+    if (!this.webAudio) {
+      this.applyElementSink(el, useVoice.getState().outputDeviceId);
+      this.elements.add(el);
+      void el.play().catch(() => {});
+      return {
+        setGain: (gain) => {
+          el.volume = Math.min(1, Math.max(0, gain));
+        },
+        stop: () => {
+          el.pause();
+          el.srcObject = null;
+          this.elements.delete(el);
+        },
+      };
+    }
+    el.muted = true;
+    void el.play().catch(() => {});
+    const ctx = this.context();
+    const source = ctx.createMediaStreamSource(stream);
+    const gain = ctx.createGain();
+    source.connect(gain).connect(ctx.destination);
+    return {
+      setGain: (value) => gain.gain.setTargetAtTime(Math.max(0, value), ctx.currentTime, 0.015),
+      stop: () => {
+        source.disconnect();
+        gain.disconnect();
+        el.pause();
+        el.srcObject = null;
+      },
+    };
+  }
+
+  setSink(deviceId: string) {
+    const ctx = this.ctx as (AudioContext & SinkCapable) | null;
+    if (ctx?.setSinkId) void ctx.setSinkId(deviceId || '').catch(() => {});
+    for (const el of this.elements) this.applyElementSink(el, deviceId);
+  }
+
+  private applyElementSink(el: HTMLAudioElement, deviceId: string) {
+    const withSink = el as HTMLAudioElement & SinkCapable;
+    if (withSink.setSinkId) void withSink.setSinkId(deviceId || '').catch(() => {});
+  }
 }
 
 type Signal =
@@ -165,11 +332,12 @@ class VoiceManager {
   private iceServers: RTCIceServer[] = FALLBACK_CONFIG.ice_servers;
   // livekit
   private room: Room | null = null;
-  private lkAudio = new Map<string, HTMLMediaElement>();
+  private lkAudio = new Map<string, { track: RemoteAudioTrack; uid: string; kind: 'voice' | 'screen'; el: HTMLMediaElement }>();
   // shared
+  private mixer = new Mixer();
+  /** Our microphone graph (mesh: we own it; LiveKit: created by the track processor). */
+  private pipe: MicPipeline | null = null;
   private analysers = new Map<string, () => void>();
-  private audioCtx: AudioContext | null = null;
-  private boost = new WeakMap<HTMLMediaElement, GainNode>();
   private awaitingJoin: string | null = null;
   private rejoin: { guildId: string | null; channelId: string } | null = null;
   private capture: SpeechCapture | null = null;
@@ -199,6 +367,7 @@ class VoiceManager {
 
     this.awaitingJoin = channelId;
     useVoice.setState({ channelId, guildId });
+    this.mixer.context(); // created inside the click that joins, so autoplay rules let it run
     const config = await voiceConfig();
     if (useVoice.getState().channelId !== channelId) return;
     useVoice.setState({ mode: config.mode });
@@ -222,8 +391,7 @@ class VoiceManager {
     }
     if (useVoice.getState().channelId !== channelId) {
       // Left (or switched) while the permission prompt was open.
-      this.mic?.getTracks().forEach((t) => t.stop());
-      this.mic = null;
+      this.releaseMic();
       return;
     }
     this.applyMicEnabled();
@@ -280,14 +448,13 @@ class VoiceManager {
     this.capture?.stop();
     this.capture = null;
     for (const uid of [...this.peers.keys()]) this.closePeer(uid);
-    this.mic?.getTracks().forEach((t) => t.stop());
-    this.mic = null;
+    this.releaseMic();
     if (this.room) {
       const room = this.room;
       this.room = null;
       void room.disconnect();
     }
-    for (const el of this.lkAudio.values()) el.remove();
+    for (const { el } of this.lkAudio.values()) el.remove();
     this.lkAudio.clear();
     ui.localCamera?.getTracks().forEach((t) => t.stop());
     ui.localScreen?.getTracks().forEach((t) => t.stop());
@@ -331,6 +498,7 @@ class VoiceManager {
       if (v.channel_id === ui.channelId) {
         this.awaitingJoin = null;
         if (v.suppress !== prev?.suppress) this.applyMicEnabled();
+        if (v.server_deaf !== prev?.server_deaf) this.applyGains();
       } else if (!this.awaitingJoin) {
         this.leave(false); // moved by the server: channel deleted, permission lost, or joined elsewhere
       }
@@ -368,11 +536,12 @@ class VoiceManager {
     const room = new Room({
       adaptiveStream: true,
       dynacast: true,
+      // Plays through Web Audio, so RemoteAudioTrack.setVolume can go past 100%.
+      webAudioMix: { audioContext: this.mixer.context() },
       audioCaptureDefaults: {
+        ...micConstraints(ui.inputDeviceId, micSettings(ui)),
         deviceId: ui.inputDeviceId || undefined,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
+        processor: this.lkProcessor(),
       },
       audioOutput: ui.outputDeviceId ? { deviceId: ui.outputDeviceId } : undefined,
       videoCaptureDefaults: { deviceId: ui.videoDeviceId || undefined, resolution: { width: 1280, height: 720, frameRate: 30 } },
@@ -428,12 +597,10 @@ class VoiceManager {
     if (track.kind === Track.Kind.Audio) {
       if (subscribed) {
         const el = track.attach();
-        el.muted = useVoice.getState().selfDeaf;
         el.style.display = 'none';
-        el.dataset.uid = uid;
         document.body.appendChild(el);
-        this.lkAudio.set(sid, el);
-        this.applyUserVolume(uid);
+        this.lkAudio.set(sid, { track: track as RemoteAudioTrack, uid, kind: kind === 'screen' ? 'screen' : 'voice', el });
+        this.applyGains(uid);
       } else {
         track.detach().forEach((el) => el.remove());
         this.lkAudio.delete(sid);
@@ -481,6 +648,7 @@ class VoiceManager {
     const pc = p.pc;
     if (data.type === 'meta') {
       useVoice.setState((s) => ({ streamKinds: { ...s.streamKinds, [uid]: data.kinds } }));
+      this.applyGains(uid); // a stream's kind decides which volume applies to it
       return;
     }
     if (data.type === 'description') {
@@ -532,7 +700,7 @@ class VoiceManager {
       ignoreOffer: false,
       queue: Promise.resolve(),
       senders: new Map(),
-      audioEls: new Map(),
+      outputs: new Map(),
     };
     this.peers.set(uid, peer);
 
@@ -560,20 +728,15 @@ class VoiceManager {
     for (const [stream] of this.localStreams()) {
       for (const track of stream.getTracks()) peer.senders.set(track.id, pc.addTrack(track, stream));
     }
+    if (useVoice.getState().localScreen) setTimeout(() => this.tuneScreenSenders(), 1500);
     return peer;
   }
 
   private onTrack(uid: string, peer: Peer, e: RTCTrackEvent) {
     const stream = e.streams[0] ?? new MediaStream([e.track]);
-    if (e.track.kind === 'audio' && !peer.audioEls.has(stream.id)) {
-      const el = new Audio();
-      el.autoplay = true;
-      el.srcObject = stream;
-      el.muted = useVoice.getState().selfDeaf;
-      this.applySink(el);
-      peer.audioEls.set(stream.id, el);
-      this.applyUserVolume(uid);
-      void el.play().catch(() => {});
+    if (e.track.kind === 'audio' && !peer.outputs.has(stream.id)) {
+      peer.outputs.set(stream.id, this.mixer.play(stream));
+      this.applyGains(uid);
       const kind = useVoice.getState().streamKinds[uid]?.[stream.id];
       if (kind !== 'screen') this.watchSpeaking(uid, stream);
     }
@@ -593,12 +756,8 @@ class VoiceManager {
 
   private dropRemoteStream(uid: string, streamId: string) {
     const peer = this.peers.get(uid);
-    const el = peer?.audioEls.get(streamId);
-    if (el) {
-      el.pause();
-      el.srcObject = null;
-      peer!.audioEls.delete(streamId);
-    }
+    peer?.outputs.get(streamId)?.stop();
+    peer?.outputs.delete(streamId);
     useVoice.setState((s) => {
       const forUser = s.remoteStreams[uid];
       if (!forUser?.[streamId]) return {};
@@ -618,10 +777,7 @@ class VoiceManager {
     const peer = this.peers.get(uid);
     if (!peer) return;
     peer.pc.close();
-    for (const el of peer.audioEls.values()) {
-      el.pause();
-      el.srcObject = null;
-    }
+    for (const out of peer.outputs.values()) out.stop();
     this.peers.delete(uid);
     this.analysers.get(uid)?.();
     this.analysers.delete(uid);
@@ -653,20 +809,126 @@ class VoiceManager {
 
   // ---------- Local controls ----------
 
+  private micPrefs(): MicPrefs {
+    return useVoice.getState();
+  }
+
+  /** Opens the microphone through our processing graph (see mic.ts). */
   private async openMic(deviceId: string): Promise<MediaStream> {
-    return navigator.mediaDevices.getUserMedia({
-      audio: {
-        deviceId: deviceId ? { exact: deviceId } : undefined,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
+    const pipe = await MicPipeline.open(deviceId, micSettings(this.micPrefs()));
+    if (pipe.denoiseFailed) toast('Supressão de ruído avançada indisponível neste computador.');
+    this.pipe?.stop();
+    this.pipe = pipe;
+    return new MediaStream([pipe.track]);
+  }
+
+  private releaseMic() {
+    this.pipe?.stop();
+    this.pipe = null;
+    this.mic = null;
+  }
+
+  /** Live microphone level for meters: null when no microphone is open. */
+  micLevel(): { level: number; threshold: number | null; open: boolean } | null {
+    const p = this.pipe;
+    return p ? { level: p.level, threshold: p.threshold(), open: p.open } : null;
+  }
+
+  private lkMicTrack(): LocalAudioTrack | undefined {
+    return this.room?.localParticipant.getTrackPublication(livekit!.Track.Source.Microphone)?.track as LocalAudioTrack | undefined;
+  }
+
+  private lkProcessor() {
+    return micProcessor(
+      () => micSettings(this.micPrefs()),
+      (pipe) => {
+        this.pipe = pipe;
       },
+    );
+  }
+
+  /**
+   * Changes microphone processing. Volume and sensitivity apply live; echo cancellation, noise
+   * suppression and auto gain need the microphone reopened (done without leaving the call).
+   */
+  async setMicPrefs(patch: Partial<MicPrefs>) {
+    const before = micSettings(this.micPrefs());
+    useVoice.setState(patch);
+    savePrefs();
+    const after = micSettings(this.micPrefs());
+    const reopen =
+      before.echoCancellation !== after.echoCancellation ||
+      before.noiseSuppression !== after.noiseSuppression ||
+      before.autoGainControl !== after.autoGainControl;
+    if (!reopen) {
+      this.pipe?.setVolume(after.volume);
+      this.pipe?.setGate(after.gate);
+      return;
+    }
+    if (this.room) {
+      const track = this.lkMicTrack();
+      if (!track) return;
+      try {
+        await track.stopProcessor();
+        await track.mediaStreamTrack.applyConstraints(micConstraints(useVoice.getState().inputDeviceId, after));
+        await track.setProcessor(this.lkProcessor());
+      } catch {
+        toast('Não foi possível aplicar o ajuste do microfone');
+      }
+      return;
+    }
+    // Chrome hands out the already-open capture (with its old processing) while that track is alive.
+    if (this.mic) await this.setInputDevice(useVoice.getState().inputDeviceId, true);
+  }
+
+  /** Quick switch (call popover / device menu): moves to the custom profile with this suppressor. */
+  setNoiseSuppression(mode: NoiseMode) {
+    const ui = useVoice.getState();
+    const s = micSettings(ui);
+    return this.setMicPrefs({
+      inputProfile: 'custom',
+      noiseSuppression: mode,
+      echoCancellation: s.echoCancellation,
+      autoGainControl: s.autoGainControl,
+      sensitivityAuto: s.gate === 'auto',
+      inputThreshold: typeof s.gate === 'number' ? s.gate : s.gate === null ? -100 : ui.inputThreshold,
     });
   }
 
+  setOutputVolume(percent: number) {
+    useVoice.setState({ outputVolume: Math.max(0, Math.min(200, Math.round(percent))) });
+    savePrefs();
+    this.applyGains();
+  }
+
+  // ---------- Push-to-talk ----------
+
+  private pttRelease: ReturnType<typeof setTimeout> | null = null;
+
+  /** Fed by the key/mouse listeners in components/PushToTalk.tsx. */
+  pushToTalk(down: boolean) {
+    const ui = useVoice.getState();
+    if (!ui.pttEnabled || !ui.channelId) return;
+    if (this.pttRelease) clearTimeout(this.pttRelease);
+    this.pttRelease = null;
+    const set = (active: boolean) => {
+      if (useVoice.getState().pttActive === active) return;
+      useVoice.setState({ pttActive: active });
+      void this.applyMicEnabled();
+    };
+    if (down) set(true);
+    else this.pttRelease = setTimeout(() => set(false), ui.pttDelay);
+  }
+
+  setPushToTalk(patch: Partial<Pick<VoiceUI, 'pttEnabled' | 'pttKey' | 'pttDelay'>>) {
+    useVoice.setState({ ...patch, pttActive: false });
+    savePrefs();
+    void this.applyMicEnabled();
+  }
+
   private async applyMicEnabled() {
-    const { selfMute, selfDeaf, channelId } = useVoice.getState();
-    const enabled = !selfMute && !selfDeaf && !this.suppressed();
+    const { selfMute, selfDeaf, channelId, pttEnabled, pttActive } = useVoice.getState();
+    const enabled = !selfMute && !selfDeaf && !this.suppressed() && (!pttEnabled || pttActive);
     this.mic?.getAudioTracks().forEach((t) => (t.enabled = enabled));
     if (this.room && channelId) {
       try {
@@ -693,7 +955,7 @@ class VoiceManager {
     const patch: Partial<VoiceUI> = { selfMute };
     if (!selfMute && useVoice.getState().selfDeaf) patch.selfDeaf = false; // unmuting also undeafens, like Discord
     useVoice.setState(patch);
-    this.applyDeafen();
+    this.applyGains();
     void this.applyMicEnabled();
     (selfMute ? sounds.mute : sounds.unmute)();
     savePrefs();
@@ -702,17 +964,11 @@ class VoiceManager {
 
   setDeaf(selfDeaf: boolean) {
     useVoice.setState({ selfDeaf });
-    this.applyDeafen();
+    this.applyGains();
     void this.applyMicEnabled();
     (selfDeaf ? sounds.mute : sounds.unmute)();
     savePrefs();
     this.pushState();
-  }
-
-  private applyDeafen() {
-    const { selfDeaf } = useVoice.getState();
-    for (const peer of this.peers.values()) for (const el of peer.audioEls.values()) el.muted = selfDeaf;
-    for (const el of this.lkAudio.values()) el.muted = selfDeaf;
   }
 
   async toggleCamera() {
@@ -754,7 +1010,7 @@ class VoiceManager {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 30 },
+        video: this.screenConstraints(),
         audio: {
           restrictOwnAudio: true,
           // Voice processing ruins music and game audio.
@@ -776,7 +1032,75 @@ class VoiceManager {
       audio.stop();
       toast('Este navegador não consegue separar o áudio da chamada; transmitindo só a imagem.');
     }
+    this.applyScreenSettings(stream);
     return stream;
+  }
+
+  /** Resolution / frame-rate caps for the chosen quality. */
+  private screenConstraints(): MediaTrackConstraints {
+    const q = STREAM_QUALITIES[useVoice.getState().streamQuality];
+    return {
+      frameRate: { ideal: q.fps, max: q.fps },
+      ...(q.width ? { width: { max: q.width }, height: { max: q.height } } : {}),
+    };
+  }
+
+  private applyScreenSettings(stream: MediaStream) {
+    const { streamQuality, streamAudio } = useVoice.getState();
+    const video = stream.getVideoTracks()[0];
+    // "detail" keeps text sharp (code, documents); "motion" keeps 60 FPS smooth (games, video).
+    if (video) video.contentHint = STREAM_QUALITIES[streamQuality].fps >= 60 ? 'motion' : 'detail';
+    for (const t of stream.getAudioTracks()) t.enabled = streamAudio;
+  }
+
+  /** Senders currently carrying our screen video (one per peer, or LiveKit's single one). */
+  private screenSenders(): RTCRtpSender[] {
+    const video = useVoice.getState().localScreen?.getVideoTracks()[0];
+    if (!video) return [];
+    if (this.room) {
+      const pub = this.room.localParticipant.getTrackPublication(livekit!.Track.Source.ScreenShare);
+      const sender = pub?.track?.sender;
+      return sender ? [sender] : [];
+    }
+    return [...this.peers.values()].map((p) => p.senders.get(video.id)).filter((x): x is RTCRtpSender => !!x);
+  }
+
+  /** Bitrate / frame-rate caps on the encoder; encodings exist once negotiation has run. */
+  private tuneScreenSenders() {
+    const q = STREAM_QUALITIES[useVoice.getState().streamQuality];
+    for (const sender of this.screenSenders()) {
+      const params = sender.getParameters();
+      if (!params.encodings?.length) continue;
+      params.encodings[0].maxBitrate = q.bitrate;
+      params.encodings[0].maxFramerate = q.fps;
+      void sender.setParameters(params).catch(() => {});
+    }
+  }
+
+  private async publishScreen(stream: MediaStream) {
+    if (this.room) {
+      const { Track } = livekit!;
+      const q = STREAM_QUALITIES[useVoice.getState().streamQuality];
+      const [video] = stream.getVideoTracks();
+      const [audio] = stream.getAudioTracks();
+      await this.room.localParticipant.publishTrack(video, {
+        source: Track.Source.ScreenShare,
+        name: 'screen',
+        screenShareEncoding: { maxBitrate: q.bitrate, maxFramerate: q.fps },
+      });
+      if (audio) await this.room.localParticipant.publishTrack(audio, { source: Track.Source.ScreenShareAudio, name: 'screen-audio' });
+      return;
+    }
+    this.publish(stream);
+    setTimeout(() => this.tuneScreenSenders(), 1500);
+  }
+
+  private unpublishScreen(stream: MediaStream) {
+    if (this.room) {
+      for (const track of stream.getTracks()) void this.room.localParticipant.unpublishTrack(track, true);
+    } else {
+      this.unpublish(stream);
+    }
   }
 
   async startScreenShare() {
@@ -788,43 +1112,71 @@ class VoiceManager {
       return;
     }
     stream.getVideoTracks()[0]?.addEventListener('ended', () => this.stopScreenShare());
-
-    if (this.room) {
-      const { Track } = livekit!;
-      try {
-        const [video] = stream.getVideoTracks();
-        const [audio] = stream.getAudioTracks();
-        await this.room.localParticipant.publishTrack(video, { source: Track.Source.ScreenShare, name: 'screen' });
-        if (audio) await this.room.localParticipant.publishTrack(audio, { source: Track.Source.ScreenShareAudio, name: 'screen-audio' });
-      } catch {
-        stream.getTracks().forEach((t) => t.stop());
-        toast('Não foi possível iniciar a transmissão');
-        return;
-      }
-      useVoice.setState({ localScreen: stream, selfStream: true });
-      this.pushState();
+    useVoice.setState({ localScreen: stream, selfStream: true });
+    try {
+      await this.publishScreen(stream);
+    } catch {
+      stream.getTracks().forEach((t) => t.stop());
+      useVoice.setState({ localScreen: null, selfStream: false });
+      toast('Não foi possível iniciar a transmissão');
       return;
     }
-
-    useVoice.setState({ localScreen: stream, selfStream: true });
-    this.publish(stream);
     this.pushState();
+  }
+
+  /** "Alterar a transmissão": picks another screen/window and swaps it in without ending the stream. */
+  async replaceScreenShare() {
+    const ui = useVoice.getState();
+    if (!ui.localScreen) return this.startScreenShare();
+    const next = await this.captureScreen();
+    const old = useVoice.getState().localScreen;
+    if (!next || !old || useVoice.getState().channelId !== ui.channelId) {
+      next?.getTracks().forEach((t) => t.stop());
+      return;
+    }
+    this.unpublishScreen(old); // stopping tracks ourselves doesn't fire "ended", so the share goes on
+    next.getVideoTracks()[0]?.addEventListener('ended', () => this.stopScreenShare());
+    useVoice.setState({ localScreen: next });
+    try {
+      await this.publishScreen(next);
+    } catch {
+      this.stopScreenShare();
+      toast('Não foi possível trocar a transmissão');
+    }
   }
 
   stopScreenShare() {
     const { localScreen } = useVoice.getState();
     if (!localScreen) return;
-    if (this.room) {
-      for (const track of localScreen.getTracks()) void this.room.localParticipant.unpublishTrack(track, true);
-    } else {
-      this.unpublish(localScreen);
-    }
+    this.unpublishScreen(localScreen);
     useVoice.setState({ localScreen: null, selfStream: false });
     this.sendMeta();
     this.pushState();
   }
 
-  async setInputDevice(deviceId: string) {
+  async setStreamQuality(quality: StreamQuality) {
+    useVoice.setState({ streamQuality: quality });
+    savePrefs();
+    const { localScreen } = useVoice.getState();
+    const video = localScreen?.getVideoTracks()[0];
+    if (!localScreen || !video) return;
+    this.applyScreenSettings(localScreen);
+    await video.applyConstraints(this.screenConstraints()).catch(() => toast('Esta fonte não aceita essa qualidade'));
+    this.tuneScreenSenders();
+  }
+
+  setStreamAudio(enabled: boolean) {
+    useVoice.setState({ streamAudio: enabled });
+    savePrefs();
+    const { localScreen } = useVoice.getState();
+    if (!localScreen) return;
+    if (enabled && !localScreen.getAudioTracks().length) {
+      toast('Esta transmissão foi iniciada sem áudio. Use "Alterar a transmissão" para capturar com som.');
+    }
+    this.applyScreenSettings(localScreen);
+  }
+
+  async setInputDevice(deviceId: string, releaseFirst = false) {
     useVoice.setState({ inputDeviceId: deviceId });
     savePrefs();
     if (this.room) {
@@ -833,8 +1185,10 @@ class VoiceManager {
     }
     if (!this.mic) return;
     try {
-      const next = await this.openMic(deviceId);
       const oldTrack = this.mic.getAudioTracks()[0];
+      const oldPipe = this.pipe;
+      if (releaseFirst) oldPipe?.stop();
+      const next = await this.openMic(deviceId); // replaces (and stops) this.pipe
       const newTrack = next.getAudioTracks()[0];
       for (const peer of this.peers.values()) {
         const sender = peer.senders.get(oldTrack.id);
@@ -902,73 +1256,58 @@ class VoiceManager {
       void this.room.switchActiveDevice('audiooutput', deviceId || 'default').catch(() => {});
       return;
     }
-    for (const peer of this.peers.values()) for (const el of peer.audioEls.values()) this.applySink(el);
-    this.applyContextSink();
+    this.mixer.setSink(deviceId);
   }
 
   // ---------- Per-person volume (local only) ----------
 
-  /** Elements currently playing this person's audio, in either backend. */
-  private audioFor(uid: string): HTMLMediaElement[] {
-    const els: HTMLMediaElement[] = [...(this.peers.get(uid)?.audioEls.values() ?? [])];
-    for (const el of this.lkAudio.values()) if (el.dataset.uid === uid) els.push(el);
-    return els;
+  /** Volume (0–2) for one of a person's audio streams: their voice or their screen share's audio. */
+  private gainFor(uid: string, kind: 'voice' | 'screen'): number {
+    const s = useVoice.getState();
+    if (s.selfDeaf || getState().voiceStates[this.meId()]?.server_deaf) return 0;
+    const master = s.outputVolume / 100;
+    if (kind === 'screen') return s.streamMuted[uid] ? 0 : ((s.streamVolumes[uid] ?? 100) / 100) * master;
+    return s.localMuted[uid] ? 0 : ((s.userVolumes[uid] ?? 100) / 100) * master;
   }
 
-  /**
-   * <audio>.volume tops out at 100%. To go up to 200% the element is routed through a GainNode, created
-   * only when somebody actually boosts (a media element can't be detached from the graph afterwards).
-   */
-  private applyUserVolume(uid: string) {
-    const { userVolumes, localMuted } = useVoice.getState();
-    const gain = localMuted[uid] ? 0 : (userVolumes[uid] ?? 100) / 100;
-    for (const el of this.audioFor(uid)) {
-      let node = this.boost.get(el);
-      if (!node && gain > 1) {
-        try {
-          this.audioCtx ??= new AudioContext();
-          if (this.audioCtx.state === 'suspended') void this.audioCtx.resume();
-          node = this.audioCtx.createGain();
-          this.audioCtx.createMediaElementSource(el).connect(node);
-          node.connect(this.audioCtx.destination);
-          this.boost.set(el, node);
-          this.applyContextSink();
-        } catch {
-          /* no WebAudio: stay at 100% */
-        }
-      }
-      if (node) {
-        el.volume = 1;
-        node.gain.value = gain;
-      } else {
-        el.volume = Math.min(1, gain);
+  /** Re-applies volumes to everything playing (or only one person's streams). */
+  private applyGains(uid?: string) {
+    const { streamKinds } = useVoice.getState();
+    for (const [peerId, peer] of this.peers) {
+      if (uid && peerId !== uid) continue;
+      for (const [streamId, out] of peer.outputs) {
+        out.setGain(this.gainFor(peerId, streamKinds[peerId]?.[streamId] === 'screen' ? 'screen' : 'voice'));
       }
     }
-  }
-
-  private applyContextSink() {
-    const ctx = this.audioCtx as (AudioContext & { setSinkId?: (id: string) => Promise<void> }) | null;
-    const { outputDeviceId } = useVoice.getState();
-    if (ctx?.setSinkId) void ctx.setSinkId(outputDeviceId || '').catch(() => {});
+    for (const a of this.lkAudio.values()) {
+      if (!uid || a.uid === uid) a.track.setVolume(this.gainFor(a.uid, a.kind));
+    }
   }
 
   setUserVolume(uid: string, percent: number) {
     const value = Math.max(0, Math.min(200, Math.round(percent)));
-    useVoice.setState((s) => ({ userVolumes: { ...s.userVolumes, [uid]: value } }));
-    this.applyUserVolume(uid);
+    useVoice.setState((s) => ({ userVolumes: { ...s.userVolumes, [uid]: value }, localMuted: { ...s.localMuted, [uid]: false } }));
+    this.applyGains(uid);
     savePrefs();
   }
 
   toggleLocalMute(uid: string) {
     useVoice.setState((s) => ({ localMuted: { ...s.localMuted, [uid]: !s.localMuted[uid] } }));
-    this.applyUserVolume(uid);
+    this.applyGains(uid);
     savePrefs();
   }
 
-  private applySink(el: HTMLAudioElement) {
-    const { outputDeviceId } = useVoice.getState();
-    const withSink = el as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
-    if (outputDeviceId && withSink.setSinkId) void withSink.setSinkId(outputDeviceId).catch(() => {});
+  setStreamVolume(uid: string, percent: number) {
+    const value = Math.max(0, Math.min(200, Math.round(percent)));
+    useVoice.setState((s) => ({ streamVolumes: { ...s.streamVolumes, [uid]: value }, streamMuted: { ...s.streamMuted, [uid]: false } }));
+    this.applyGains(uid);
+    savePrefs();
+  }
+
+  toggleStreamMute(uid: string) {
+    useVoice.setState((s) => ({ streamMuted: { ...s.streamMuted, [uid]: !s.streamMuted[uid] } }));
+    this.applyGains(uid);
+    savePrefs();
   }
 
   // ---------- Speaking indicator (mesh; LiveKit reports active speakers itself) ----------
@@ -976,10 +1315,9 @@ class VoiceManager {
   private watchSpeaking(uid: string, stream: MediaStream) {
     if (this.analysers.has(uid) || !stream.getAudioTracks().length) return;
     try {
-      this.audioCtx ??= new AudioContext();
-      if (this.audioCtx.state === 'suspended') void this.audioCtx.resume();
-      const source = this.audioCtx.createMediaStreamSource(stream);
-      const analyser = this.audioCtx.createAnalyser();
+      const ctx = this.mixer.context();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
       source.connect(analyser);
       const data = new Uint8Array(analyser.fftSize);

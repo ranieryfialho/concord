@@ -1,5 +1,6 @@
 import { Check } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { NOISE_LABELS, type NoiseMode, micSettings } from '../mic';
 import { useVoice, voice } from '../voice';
 
 export function useMediaDevices(): MediaDeviceInfo[] {
@@ -46,6 +47,7 @@ export function DeviceMenu({ kind, onClose }: { kind: 'audio' | 'video'; onClose
   const inputDeviceId = useVoice((s) => s.inputDeviceId);
   const outputDeviceId = useVoice((s) => s.outputDeviceId);
   const videoDeviceId = useVoice((s) => s.videoDeviceId);
+  const noise = useVoice((s) => micSettings(s).noiseSuppression);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -85,6 +87,15 @@ export function DeviceMenu({ kind, onClose }: { kind: 'audio' | 'video'; onClose
             fallback="Alto-falante"
             onPick={(id) => pick(() => voice.setOutputDevice(id))}
           />
+          <div className="device-section">
+            <div className="device-section-title">Supressão de ruído</div>
+            {(Object.keys(NOISE_LABELS) as NoiseMode[]).map((m) => (
+              <button key={m} className="device-item" title={NOISE_LABELS[m].description} onClick={() => pick(() => void voice.setNoiseSuppression(m))}>
+                <span className="truncate">{NOISE_LABELS[m].title}</span>
+                {noise === m && <Check size={14} />}
+              </button>
+            ))}
+          </div>
         </>
       ) : (
         <Section

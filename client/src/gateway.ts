@@ -41,6 +41,7 @@ import type {
   VoiceState,
 } from './types';
 import { voice } from './voice';
+import { serverBuild } from './update';
 
 type Handler = (d: any) => void;
 
@@ -93,7 +94,10 @@ const handlers: Record<string, Handler> = {
   READY: (d: ReadyPayload) => {
     applyReady(d);
     voice.onReady();
+    serverBuild(d.client_build);
   },
+
+  APP_UPDATE: (d: { build: string }) => serverBuild(d.build),
 
   USER_UPDATE: (u: User) => {
     upsertUsers([u]);

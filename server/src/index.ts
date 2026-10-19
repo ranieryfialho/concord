@@ -18,9 +18,9 @@ import { livekitEnabled, voiceRouter } from './routes/voice.js';
 import { transcriptionMode } from './transcription.js';
 import { INLINE_EXTENSIONS, removeRequestFiles } from './uploads.js';
 import { HttpError } from './util.js';
+import { CLIENT_DIST } from './version.js';
 
 const PORT = Number(process.env.PORT ?? 3001);
-const CLIENT_DIST = path.resolve(import.meta.dirname, '..', '..', 'client', 'dist');
 
 const app = express();
 app.disable('x-powered-by');
@@ -55,7 +55,7 @@ app.use('/api', (_req, _res) => {
 const livekitOrigin = livekitEnabled ? ` ${process.env.LIVEKIT_URL} ${process.env.LIVEKIT_URL!.replace(/^ws/, 'http')}` : '';
 const CSP = [
   "default-src 'self'",
-  "script-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'", // WebAssembly for the microphone noise suppressor (RNNoise)
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:", // https: for link-preview images
   "media-src 'self' blob:",
@@ -69,6 +69,7 @@ if (fs.existsSync(path.join(CLIENT_DIST, 'index.html'))) {
   app.use((req, res, next) => {
     if (req.method !== 'GET') return next();
     res.setHeader('Content-Security-Policy', CSP);
+    res.setHeader('Cache-Control', 'no-cache'); // always pick up a new build on reload
     res.sendFile(path.join(CLIENT_DIST, 'index.html'));
   });
 }

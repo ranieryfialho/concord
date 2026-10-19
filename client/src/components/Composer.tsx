@@ -39,6 +39,19 @@ export function addFilesToComposer(files: File[]) {
   pendingFiles?.(files);
 }
 
+let insertText: ((text: string) => void) | null = null;
+let queuedText = '';
+
+/** "Mencionar" in a user's menu: adds @username to the open composer (or the next one to open). */
+export function mentionInComposer(username: string) {
+  const text = `@${username} `;
+  if (insertText) insertText(text);
+  else {
+    queuedText += text;
+    toast('Abra um canal de texto para enviar a menção');
+  }
+}
+
 export function Composer({ channel }: { channel: Channel }) {
   const [text, setText] = useState(() => drafts.get(channel.id) ?? '');
   const [files, setFiles] = useState<File[]>([]);
@@ -58,6 +71,27 @@ export function Composer({ channel }: { channel: Channel }) {
       pendingFiles = null;
     };
   });
+
+  useEffect(() => {
+    insertText = (incoming) => {
+      setText((prev) => {
+        const next = prev && !/\s$/.test(prev) ? `${prev} ${incoming}` : prev + incoming;
+        requestAnimationFrame(() => {
+          inputRef.current?.focus();
+          inputRef.current?.setSelectionRange(next.length, next.length);
+          setCaret(next.length);
+        });
+        return next;
+      });
+    };
+    if (queuedText) {
+      insertText(queuedText);
+      queuedText = '';
+    }
+    return () => {
+      insertText = null;
+    };
+  }, [channel.id]);
 
   useEffect(() => {
     drafts.set(channel.id, text);

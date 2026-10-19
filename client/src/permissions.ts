@@ -61,7 +61,7 @@ export const PERMISSION_GROUPS: { title: string; items: PermissionInfo[] }[] = [
       { key: 'CONNECT', label: 'Conectar', description: 'Entrar nos canais de voz.' },
       { key: 'SPEAK', label: 'Falar', description: 'Falar nos canais de voz. Sem isso a pessoa entra silenciada.' },
       { key: 'STREAM', label: 'Vídeo e transmissão', description: 'Ligar a câmera e compartilhar a tela.' },
-      { key: 'MUTE_MEMBERS', label: 'Silenciar membros', description: 'Silenciar outras pessoas nos canais de voz, para todos.' },
+      { key: 'MUTE_MEMBERS', label: 'Silenciar membros', description: 'Silenciar ou desativar o áudio de outras pessoas nos canais de voz, para todos.' },
       { key: 'MOVE_MEMBERS', label: 'Mover membros', description: 'Mover pessoas entre canais de voz e desconectá-las da voz.' },
     ],
   },

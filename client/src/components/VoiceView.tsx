@@ -3,6 +3,8 @@ import {
   Captions,
   ChevronUp,
   Download,
+  Eye,
+  EyeOff,
   Trash2,
   HeadphoneOff,
   Headphones,
@@ -10,14 +12,17 @@ import {
   MessageSquare,
   Mic,
   MicOff,
+  Minimize2,
   Monitor,
   MonitorOff,
   PhoneOff,
+  PictureInPicture2,
   ScrollText,
   SlidersHorizontal,
   Video,
   VideoOff,
   Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -27,10 +32,11 @@ import { P, has } from '../permissions';
 import { channelLabel, closeModal, getState, isUnread, nameOf, openModal, toast, useStore } from '../store';
 import type { Channel, SavedTranscript, TranscriptEntry } from '../types';
 import { cx } from '../utils';
-import { type StreamKind, transcriptionAvailable, useVoice, voice } from '../voice';
+import { STREAM_QUALITIES, type StreamKind, savePrefs, transcriptionAvailable, useVoice, voice } from '../voice';
 import { Avatar, Spinner } from './common';
 import { DeviceMenu } from './DeviceMenu';
-import { startScreenShare } from './UserPanel';
+import { onScreenShareClick } from './StreamMenu';
+import { keyLabel } from './PushToTalk';
 import { Composer } from './Composer';
 import { MessageList, TypingIndicator } from './ChatView';
 import { openVoiceUserMenu } from './VoiceUserMenu';
@@ -100,16 +106,40 @@ function useTiles(channelId: string): Tile[] {
   return tiles;
 }
 
+function useFullscreen(ref: React.RefObject<HTMLElement | null>) {
+  const [active, setActive] = useState(false);
+  useEffect(() => {
+    const onChange = () => setActive(!!ref.current && document.fullscreenElement === ref.current);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, [ref]);
+  const toggle = () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    else void ref.current?.requestFullscreen().catch(() => toast('Não foi possível abrir em tela cheia'));
+  };
+  return [active, toggle] as const;
+}
+
 function TileView({ tile, guildId, focused, onFocus }: { tile: Tile; guildId: string | null; focused: boolean; onFocus: () => void }) {
   const name = useStore((s) => nameOf(s, tile.userId, guildId));
   const state = useStore((s) => s.voiceStates[tile.userId]);
   const speaking = useVoice((s) => !!s.speaking[tile.userId]);
   const meId = useStore((s) => s.me?.id);
   const isScreen = tile.kind === 'screen';
+  const isMine = tile.userId === meId;
+  const streamMuted = useVoice((s) => !!s.streamMuted[tile.userId]);
+  const ref = useRef<HTMLDivElement>(null);
+  const [fullscreen, toggleFullscreen] = useFullscreen(ref);
+  const stop = (fn: () => void) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    fn();
+  };
   return (
     <div
-      className={cx('voice-tile', speaking && !isScreen && 'speaking', focused && 'focused', isScreen && 'screen')}
-      onClick={onFocus}
+      ref={ref}
+      className={cx('voice-tile', speaking && !isScreen && 'speaking', focused && 'focused', isScreen && 'screen', fullscreen && 'fullscreen')}
+      onClick={fullscreen ? undefined : onFocus}
+      onDoubleClick={tile.stream ? toggleFullscreen : undefined}
       onContextMenu={(e) => openVoiceUserMenu(e, tile.userId, guildId)}
     >
       {tile.stream ? (
@@ -130,12 +160,37 @@ function TileView({ tile, guildId, focused, onFocus }: { tile: Tile; guildId: st
         <span className="truncate">{isScreen ? `Tela de ${name}` : name}</span>
       </div>
       {isScreen && <span className="live-badge tile-live">Ao vivo</span>}
-      <button className="voice-tile-menu icon-btn" title="Opções do usuário" onClick={(e) => openVoiceUserMenu(e, tile.userId, guildId)}>
-        <SlidersHorizontal size={15} />
-      </button>
-      <button className="voice-tile-expand icon-btn" title="Destacar">
-        <Maximize2 size={15} />
-      </button>
+      <div className="voice-tile-actions">
+        {isScreen && !isMine && (
+          <button
+            className={cx('icon-btn', streamMuted && 'danger')}
+            title={streamMuted ? 'Reativar o som da transmissão' : 'Silenciar transmissão'}
+            onClick={stop(() => voice.toggleStreamMute(tile.userId))}
+          >
+            {streamMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+          </button>
+        )}
+        {tile.stream && !fullscreen && 'pictureInPictureEnabled' in document && document.pictureInPictureEnabled && (
+          <button
+            className="icon-btn"
+            title="Abrir em janela flutuante"
+            onClick={stop(() => {
+              const video = ref.current?.querySelector('video');
+              void video?.requestPictureInPicture().catch(() => toast('Não foi possível abrir a janela flutuante'));
+            })}
+          >
+            <PictureInPicture2 size={15} />
+          </button>
+        )}
+        {tile.stream && (
+          <button className="icon-btn" title={fullscreen ? 'Sair da tela cheia (Esc)' : 'Tela cheia'} onClick={stop(toggleFullscreen)}>
+            {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+          </button>
+        )}
+        <button className="icon-btn" title="Opções do usuário" onClick={(e) => openVoiceUserMenu(e, tile.userId, guildId)}>
+          <SlidersHorizontal size={15} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -172,8 +227,15 @@ function TranscribingBanner({ channelId, guildId }: { channelId: string; guildId
   );
 }
 
+function setHideNoVideo(hideNoVideo: boolean) {
+  useVoice.setState({ hideNoVideo });
+  savePrefs();
+}
+
 export function VoiceStage({ channel, compact = false }: { channel: Channel; compact?: boolean }) {
-  const tiles = useTiles(channel.id);
+  const allTiles = useTiles(channel.id);
+  const hideNoVideo = useVoice((s) => s.hideNoVideo);
+  const tiles = hideNoVideo ? allTiles.filter((t) => t.stream) : allTiles;
   const [focus, setFocus] = useState<string | null>(null);
   const focused = tiles.find((t) => t.key === focus);
   const label = channel.type === 'voice' ? channel.name : 'esta chamada';
@@ -181,13 +243,25 @@ export function VoiceStage({ channel, compact = false }: { channel: Channel; com
   return (
     <div className={cx('voice-stage', focused && 'has-focus', compact && 'compact')}>
       <TranscribingBanner channelId={channel.id} guildId={channel.guild_id} />
-      {tiles.length === 0 && (
+      {allTiles.length === 0 && (
         <div className="empty-state">
           <div className="empty-icon">
             <Volume2 size={32} />
           </div>
           <h2>{label}</h2>
           <p className="muted">Ninguém está aqui ainda. Entre para começar a conversa.</p>
+        </div>
+      )}
+      {allTiles.length > 0 && tiles.length === 0 && (
+        <div className="empty-state">
+          <div className="empty-icon">
+            <EyeOff size={32} />
+          </div>
+          <h2>Ninguém com câmera ou tela</h2>
+          <p className="muted">Os participantes sem vídeo estão ocultos.</p>
+          <button className="btn btn-secondary" onClick={() => setHideNoVideo(false)}>
+            Mostrar todos
+          </button>
         </div>
       )}
       {focused ? (
@@ -239,6 +313,9 @@ export function VoiceControls({ channel, floating = true }: { channel: Channel; 
   const transcriptOpen = useVoice((s) => s.transcriptOpen);
   const transcribing = useStore((s) => !!s.transcriptions[channel.id]?.active);
   const suppressed = useStore((s) => !!(s.me && s.voiceStates[s.me.id]?.suppress));
+  const pttKey = useVoice((s) => (s.pttEnabled ? s.pttKey : ''));
+  const pttActive = useVoice((s) => s.pttActive);
+  const ptt = pttKey ? { key: pttKey, active: pttActive } : null;
   const canStream = has(channel.permissions, P.STREAM);
   const canConnect = has(channel.permissions, P.CONNECT);
 
@@ -261,8 +338,16 @@ export function VoiceControls({ channel, floating = true }: { channel: Channel; 
     <div className={cx('voice-controls', floating && 'floating')}>
       <ControlWithMenu kind="audio">
         <button
-          className={cx('control-btn', (selfMute || suppressed) && 'off')}
-          title={suppressed ? 'Você não tem permissão para falar aqui' : selfMute ? 'Ativar microfone' : 'Silenciar'}
+          className={cx('control-btn', (selfMute || suppressed) && 'off', ptt?.active && !selfMute && 'talking')}
+          title={
+            suppressed
+              ? 'Você não tem permissão para falar aqui'
+              : selfMute
+                ? 'Ativar microfone'
+                : ptt
+                  ? `Apertar para falar: segure ${keyLabel(ptt.key)} (clique para silenciar)`
+                  : 'Silenciar'
+          }
           onClick={() => voice.setMute(!selfMute)}
         >
           {selfMute || suppressed ? <MicOff size={19} /> : <Mic size={19} />}
@@ -278,11 +363,7 @@ export function VoiceControls({ channel, floating = true }: { channel: Channel; 
               {selfVideo ? <Video size={19} /> : <VideoOff size={19} />}
             </button>
           </ControlWithMenu>
-          <button
-            className={cx('control-btn', selfStream && 'on')}
-            title={selfStream ? 'Parar transmissão' : 'Compartilhar tela'}
-            onClick={() => (selfStream ? voice.stopScreenShare() : startScreenShare())}
-          >
+          <button className={cx('control-btn', selfStream && 'on')} title={selfStream ? 'Opções da transmissão' : 'Compartilhar tela'} onClick={onScreenShareClick}>
             {selfStream ? <MonitorOff size={19} /> : <Monitor size={19} />}
           </button>
         </>
@@ -556,10 +637,23 @@ function VoiceChatPanel({ channel }: { channel: Channel }) {
   );
 }
 
+/** "1080p 30FPS · AO VIVO" next to the channel name while we share our screen here. */
+function StreamBadge({ channelId }: { channelId: string }) {
+  const live = useVoice((s) => s.selfStream && s.channelId === channelId);
+  const quality = useVoice((s) => s.streamQuality);
+  if (!live) return null;
+  return (
+    <span className="stream-badge" title="Qualidade da sua transmissão">
+      {STREAM_QUALITIES[quality].short} <strong>AO VIVO</strong>
+    </span>
+  );
+}
+
 export function VoiceView({ channel }: { channel: Channel }) {
   const count = useParticipants(channel.id).length;
   const transcriptOpen = useVoice((s) => s.transcriptOpen);
   const chatOpen = useVoice((s) => s.chatOpen);
+  const hideNoVideo = useVoice((s) => s.hideNoVideo);
   const unread = useStore((s) => isUnread(s, channel));
   return (
     <div className="voice-view">
@@ -567,7 +661,15 @@ export function VoiceView({ channel }: { channel: Channel }) {
         <Volume2 size={20} className="muted" />
         <h3>{channel.name}</h3>
         <span className="small muted">{count === 1 ? '1 na sala' : `${count} na sala`}</span>
+        <StreamBadge channelId={channel.id} />
         <div className="chat-header-actions">
+          <button
+            className={cx('icon-btn', hideNoVideo && 'active')}
+            title={hideNoVideo ? 'Mostrar todos os participantes' : 'Ocultar participantes sem vídeo'}
+            onClick={() => setHideNoVideo(!hideNoVideo)}
+          >
+            {hideNoVideo ? <EyeOff size={20} /> : <Eye size={20} />}
+          </button>
           <button
             className={cx('icon-btn', chatOpen && !transcriptOpen && 'active', unread && !chatOpen && 'has-unread')}
             title="Chat de texto da sala"

@@ -4,6 +4,8 @@ import { native } from '../native';
 import { HOME, ackChannel, getState, totalMentions, useStore } from '../store';
 import { ChatView } from './ChatView';
 import { ContextMenuHost } from './ContextMenu';
+import { PushToTalkListener } from './PushToTalk';
+import { UpdateBanner } from './UpdateBanner';
 import { FriendsView } from './FriendsView';
 import { GuildSidebar } from './GuildSidebar';
 import { HomeSidebar } from './HomeSidebar';
@@ -64,6 +66,8 @@ export function Layout() {
       <Modals />
       <IncomingCall />
       <ContextMenuHost />
+      <PushToTalkListener />
+      <UpdateBanner />
       {toastMessage && <div className="toast">{toastMessage}</div>}
     </div>
   );

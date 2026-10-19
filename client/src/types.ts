@@ -123,6 +123,7 @@ export interface VoiceState {
   self_stream: boolean;
   /** Muted by a moderator (MUTE_MEMBERS). */
   server_mute: boolean;
+  server_deaf: boolean;
   suppress: boolean;
 }
 
@@ -177,4 +178,6 @@ export interface ReadyPayload {
   mention_counts: Record<string, number>;
   voice_states: VoiceState[];
   calls: Call[];
+  /** Web-client build the server is serving (null when unknown). */
+  client_build: string | null;
 }

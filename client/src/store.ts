@@ -37,14 +37,15 @@ export interface View {
 }
 
 export type ModalState =
-  | { type: 'createGuild' }
+  | { type: 'createGuild'; inviteCode?: string }
   | { type: 'createChannel'; guildId: string; parentId: string | null; channelType: 'text' | 'voice' | 'category' }
   | { type: 'channelSettings'; channelId: string }
   | { type: 'invite'; guildId: string }
-  | { type: 'userSettings' }
+  | { type: 'userSettings'; tab?: 'account' | 'appearance' | 'voice' | 'app' }
   | { type: 'guildSettings'; guildId: string }
   | { type: 'profile'; userId: string; guildId: string | null }
-  | { type: 'screenPicker' }
+  | { type: 'screenPicker'; replace?: boolean }
+  | { type: 'nickname'; guildId: string; userId: string }
   | { type: 'image'; url: string; filename: string }
   | { type: 'createGroup'; channelId: string | null }
   | { type: 'createThread'; channelId: string; message: Message | null }

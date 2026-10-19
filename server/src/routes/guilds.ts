@@ -173,15 +173,20 @@ guildsRouter.patch('/guilds/:id/voice-states/:userId', (req, res) => {
   const state = voiceStates.get(target);
   if (!state || state.guild_id !== ctx.guild.id) throw new HttpError(404, 'Essa pessoa não está em um canal de voz deste servidor');
 
-  const { mute, channel_id: destination } = (req.body ?? {}) as { mute?: unknown; channel_id?: unknown };
-  if (mute === undefined && destination === undefined) throw new HttpError(400, 'Nada para alterar');
+  const { mute, deaf, channel_id: destination } = (req.body ?? {}) as { mute?: unknown; deaf?: unknown; channel_id?: unknown };
+  if (mute === undefined && deaf === undefined && destination === undefined) throw new HttpError(400, 'Nada para alterar');
 
-  if (mute !== undefined) {
-    if (typeof mute !== 'boolean') throw new HttpError(400, 'Valor inválido');
+  if (mute !== undefined || deaf !== undefined) {
+    if ((mute !== undefined && typeof mute !== 'boolean') || (deaf !== undefined && typeof deaf !== 'boolean')) {
+      throw new HttpError(400, 'Valor inválido');
+    }
     if (!has(actor, P.MUTE_MEMBERS)) throw new HttpError(403, 'Você não tem permissão para silenciar membros');
     const channel = getChannel(state.channel_id);
     const canSpeak = !!channel && has(channelPermissions(channel, target, ctx), P.SPEAK);
-    setVoiceState({ ...state, server_mute: mute, suppress: mute || !canSpeak });
+    const server_mute = typeof mute === 'boolean' ? mute : state.server_mute;
+    const server_deaf = typeof deaf === 'boolean' ? deaf : state.server_deaf;
+    // Server-deafened people can't hear the call, and (like Discord) can't speak either.
+    setVoiceState({ ...state, server_mute, server_deaf, suppress: server_mute || server_deaf || !canSpeak });
   }
 
   if (destination !== undefined) {

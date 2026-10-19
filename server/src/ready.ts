@@ -11,6 +11,7 @@ import {
 } from './models.js';
 import { DM_PERMISSIONS, GuildContext, P, type RoleRow } from './permissions.js';
 import { callPayload, calls, presenceOf, voiceStates } from './realtime.js';
+import { clientBuild } from './version.js';
 
 export function serializeRole(r: RoleRow) {
   return {
@@ -134,5 +135,6 @@ export function buildReady(user: UserRow) {
     mention_counts: mentionCounts,
     voice_states: voice,
     calls: [...calls.values()].filter((c) => privateIds.has(c.channel_id)).map(callPayload),
+    client_build: clientBuild(),
   };
 }

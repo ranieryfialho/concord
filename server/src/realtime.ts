@@ -20,6 +20,8 @@ export interface VoiceState {
   self_stream: boolean;
   /** A moderator muted this member (MUTE_MEMBERS). Cleared when they leave the channel. */
   server_mute: boolean;
+  /** A moderator deafened this member (MUTE_MEMBERS): they hear nothing. Cleared when they leave. */
+  server_deaf: boolean;
   /** Cannot transmit audio: lacks SPEAK or is server-muted. */
   suppress: boolean;
 }

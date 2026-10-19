@@ -32,6 +32,10 @@ import {
 import type { ApiChannel, ApiGuild, Me, Role, User } from '../types';
 import { PRESENCE_LABEL, colorFor, cx, dayLabel } from '../utils';
 import { useVoice, voice } from '../voice';
+import { type InputProfile, NOISE_LABELS, type NoiseMode, PROFILE_LABELS } from '../mic';
+import { keyLabel } from './PushToTalk';
+import { MicMeter, useMicReader, useMicTest } from './MicMeter';
+import { inviteLink } from '../invite';
 import { Avatar, GuildIcon, Modal, Spinner } from './common';
 
 function useBusy() {
@@ -53,14 +57,21 @@ function useBusy() {
 
 // ---------- Servers ----------
 
-function CreateGuildModal() {
+function CreateGuildModal({ initialCode }: { initialCode?: string }) {
   const me = useStore((s) => s.me);
-  const [step, setStep] = useState<'choose' | 'create' | 'join'>('choose');
+  const [step, setStep] = useState<'choose' | 'create' | 'join'>(initialCode ? 'join' : 'choose');
   const [name, setName] = useState(`Servidor de ${me?.display_name || me?.username}`);
-  const [code, setCode] = useState('');
-  const [preview, setPreview] = useState<{ guild: { name: string }; member_count: number } | null>(null);
+  const [code, setCode] = useState(initialCode ?? '');
+  const [preview, setPreview] = useState<{ guild: { id: string; name: string }; member_count: number } | null>(null);
   const { busy, error, run } = useBusy();
-  const inviteCode = () => encodeURIComponent(code.trim().split('/').pop() ?? '');
+  const inviteCode = () => encodeURIComponent(code.trim().replace(/\/+$/, '').split('/').pop() ?? '');
+  const alreadyIn = useStore((s) => !!preview && !!s.guilds[preview.guild.id]);
+
+  // Opened from an invite link: look the invite up right away.
+  useEffect(() => {
+    if (initialCode) void run(async () => setPreview(await api(`/invites/${encodeURIComponent(initialCode)}`)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCode]);
 
   const create = (e: FormEvent) => {
     e.preventDefault();
@@ -77,6 +88,11 @@ function CreateGuildModal() {
     void run(async () => {
       if (!preview) {
         setPreview(await api(`/invites/${inviteCode()}`));
+        return;
+      }
+      if (alreadyIn) {
+        closeModal();
+        selectGuild(preview.guild.id);
         return;
       }
       const g = await api<ApiGuild>(`/invites/${inviteCode()}`, { method: 'POST' });
@@ -134,13 +150,14 @@ function CreateGuildModal() {
               setCode(e.target.value);
               setPreview(null);
             }}
-            placeholder="ex.: hTKzmak"
+            placeholder={`ex.: ${location.origin}/invite/hTKzmak`}
             autoFocus
           />
         </label>
         {preview && (
           <div className="invite-preview">
-            Você foi convidado para <strong>{preview.guild.name}</strong> · {preview.member_count} membro{preview.member_count === 1 ? '' : 's'}
+            {alreadyIn ? 'Você já está em' : 'Você foi convidado para'} <strong>{preview.guild.name}</strong> · {preview.member_count} membro
+            {preview.member_count === 1 ? '' : 's'}
           </div>
         )}
         {error && <p className="form-error">{error}</p>}
@@ -149,7 +166,7 @@ function CreateGuildModal() {
             Voltar
           </button>
           <button className="btn btn-primary" disabled={busy || !code.trim()}>
-            {preview ? 'Aceitar convite' : 'Verificar convite'}
+            {!preview ? 'Verificar convite' : alreadyIn ? 'Abrir servidor' : 'Aceitar convite'}
           </button>
         </div>
       </form>
@@ -169,13 +186,14 @@ function InviteModal({ guildId }: { guildId: string }) {
       .catch((e: Error) => toast(e.message));
   }, [guildId, never]);
 
+  const link = code ? inviteLink(code) : null;
   return (
     <Modal title={`Convide amigos para ${guildName}`} onClose={closeModal}>
       <label className="field">
-        <span>Envie este código de convite</span>
+        <span>Envie este link de convite</span>
         <div className="copy-row">
-          <input readOnly value={code ?? 'Gerando…'} onFocus={(e) => e.target.select()} />
-          <button className="btn btn-primary" disabled={!code} onClick={() => code && copyText(code, 'Convite copiado!')}>
+          <input readOnly value={link ?? 'Gerando…'} onFocus={(e) => e.target.select()} />
+          <button className="btn btn-primary" disabled={!link} onClick={() => link && copyText(link, 'Link copiado!')}>
             <Copy size={16} /> Copiar
           </button>
         </div>
@@ -184,7 +202,10 @@ function InviteModal({ guildId }: { guildId: string }) {
         <input type="checkbox" checked={never} onChange={(e) => setNever(e.target.checked)} />
         <span>Convite nunca expira (padrão: 7 dias)</span>
       </label>
-      <p className="muted small">Quem receber o código usa “Adicionar um servidor → Entrar com um convite”.</p>
+      <p className="muted small">
+        Quem abrir o link entra (ou cria a conta) e cai direto no convite. No app, também dá para colar o link ou só o código <strong>{code}</strong> em
+        “Adicionar um servidor → Entrar com um convite”.
+      </p>
     </Modal>
   );
 }
@@ -1025,9 +1046,9 @@ function ProfileModal({ userId, guildId }: { userId: string; guildId: string | n
   );
 }
 
-function UserSettingsModal() {
+function UserSettingsModal({ initialTab }: { initialTab?: 'account' | 'appearance' | 'voice' | 'app' }) {
   const me = useStore((s) => s.me)!;
-  const [tab, setTab] = useState<'account' | 'appearance' | 'voice' | 'app'>('account');
+  const [tab, setTab] = useState<'account' | 'appearance' | 'voice' | 'app'>(initialTab ?? 'account');
   return (
     <Modal wide title="Configurações de usuário" onClose={closeModal}>
       <div className="settings-layout">
@@ -1242,45 +1263,232 @@ function CameraPreview({ deviceId }: { deviceId: string }) {
   );
 }
 
+function Toggle({ label, description, checked, onChange }: { label: string; description?: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="perm-row">
+      <div>
+        <strong>{label}</strong>
+        {description && <p className="small muted">{description}</p>}
+      </div>
+      <input type="checkbox" className="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    </label>
+  );
+}
+
+function PttKeyButton() {
+  const pttKey = useVoice((s) => s.pttKey);
+  const [listening, setListening] = useState(false);
+  useEffect(() => {
+    if (!listening) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.code !== 'Escape') voice.setPushToTalk({ pttKey: e.code });
+      setListening(false);
+    };
+    const onMouse = (e: MouseEvent) => {
+      if (e.button < 3) return; // left/middle/right stay usable
+      e.preventDefault();
+      voice.setPushToTalk({ pttKey: `Mouse${e.button}` });
+      setListening(false);
+    };
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('mousedown', onMouse, true);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('mousedown', onMouse, true);
+    };
+  }, [listening]);
+  return (
+    <button className={cx('btn btn-secondary keybind', listening && 'listening')} onClick={() => setListening(!listening)}>
+      {listening ? 'Pressione uma tecla… (Esc cancela)' : pttKey ? keyLabel(pttKey) : 'Definir tecla'}
+    </button>
+  );
+}
+
 function VoiceSettings() {
-  const inputDeviceId = useVoice((s) => s.inputDeviceId);
-  const outputDeviceId = useVoice((s) => s.outputDeviceId);
-  const videoDeviceId = useVoice((s) => s.videoDeviceId);
-  const mode = useVoice((s) => s.mode);
+  const ui = useVoice(
+    useShallow((s) => ({
+      inputDeviceId: s.inputDeviceId,
+      outputDeviceId: s.outputDeviceId,
+      videoDeviceId: s.videoDeviceId,
+      mode: s.mode,
+      inputProfile: s.inputProfile,
+      echoCancellation: s.echoCancellation,
+      noiseSuppression: s.noiseSuppression,
+      autoGainControl: s.autoGainControl,
+      sensitivityAuto: s.sensitivityAuto,
+      inputThreshold: s.inputThreshold,
+      inputVolume: s.inputVolume,
+      outputVolume: s.outputVolume,
+      pttEnabled: s.pttEnabled,
+      pttDelay: s.pttDelay,
+      inCall: !!s.channelId,
+    })),
+  );
   const devices = useMediaDevices();
+  const test = useMicTest();
+  const read = useMicReader(test.pipe);
 
   const inputs = devices.filter((d) => d.kind === 'audioinput' && d.deviceId !== 'default');
   const outputs = devices.filter((d) => d.kind === 'audiooutput' && d.deviceId !== 'default');
   const cameras = devices.filter((d) => d.kind === 'videoinput');
   const unlabeled = devices.length > 0 && devices.every((d) => !d.label);
+  const custom = ui.inputProfile === 'custom';
 
   return (
     <div>
-      <label className="field">
-        <span>Dispositivo de entrada</span>
-        <select value={inputDeviceId} onChange={(e) => void voice.setInputDevice(e.target.value)}>
-          <option value="">Padrão</option>
-          {inputs.map((d) => (
-            <option key={d.deviceId} value={d.deviceId}>
-              {d.label || 'Microfone'}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field">
-        <span>Dispositivo de saída</span>
-        <select value={outputDeviceId} onChange={(e) => voice.setOutputDevice(e.target.value)}>
-          <option value="">Padrão</option>
-          {outputs.map((d) => (
-            <option key={d.deviceId} value={d.deviceId}>
-              {d.label || 'Alto-falante'}
-            </option>
-          ))}
-        </select>
-      </label>
+      <h3 className="settings-title">Voz</h3>
+      <div className="settings-grid">
+        <label className="field">
+          <span>Microfone</span>
+          <select value={ui.inputDeviceId} onChange={(e) => void voice.setInputDevice(e.target.value)}>
+            <option value="">Padrão do sistema</option>
+            {inputs.map((d) => (
+              <option key={d.deviceId} value={d.deviceId}>
+                {d.label || 'Microfone'}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Alto-falante</span>
+          <select value={ui.outputDeviceId} onChange={(e) => voice.setOutputDevice(e.target.value)}>
+            <option value="">Padrão do sistema</option>
+            {outputs.map((d) => (
+              <option key={d.deviceId} value={d.deviceId}>
+                {d.label || 'Alto-falante'}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>
+            Volume do microfone <em className="muted">{ui.inputVolume}%</em>
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={200}
+            step={5}
+            value={ui.inputVolume}
+            onChange={(e) => void voice.setMicPrefs({ inputVolume: Number(e.target.value) })}
+            onDoubleClick={() => void voice.setMicPrefs({ inputVolume: 100 })}
+          />
+        </label>
+        <label className="field">
+          <span>
+            Volume do alto-falante <em className="muted">{ui.outputVolume}%</em>
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={200}
+            step={5}
+            value={ui.outputVolume}
+            onChange={(e) => voice.setOutputVolume(Number(e.target.value))}
+            onDoubleClick={() => voice.setOutputVolume(100)}
+          />
+        </label>
+      </div>
+
+      <div className="mic-test-row">
+        {ui.inCall ? (
+          <span className="small muted mic-test-note">Na chamada: o medidor mostra o seu microfone ao vivo.</span>
+        ) : (
+          <button className={cx('btn', test.running ? 'btn-secondary' : 'btn-primary')} onClick={test.toggle}>
+            {test.running ? 'Parar teste' : 'Teste do microfone'}
+          </button>
+        )}
+        <MicMeter read={read} />
+      </div>
+      {test.running && <p className="small muted">Fale algo: você vai se ouvir como os outros te ouvem. Use fones para não dar eco.</p>}
+
+      <div className="settings-divider" />
+
+      <h4 className="settings-subtitle">Perfil de entrada</h4>
+      {(Object.keys(PROFILE_LABELS) as InputProfile[]).map((p) => (
+        <label key={p} className={cx('radio-card', ui.inputProfile === p && 'active')}>
+          <input type="radio" checked={ui.inputProfile === p} onChange={() => void voice.setMicPrefs({ inputProfile: p })} />
+          <span>
+            <strong>{PROFILE_LABELS[p].title}</strong>
+            <span className="muted small">{PROFILE_LABELS[p].description}</span>
+          </span>
+        </label>
+      ))}
+
+      {custom && (
+        <div className="custom-profile">
+          <div className="field">
+            <span>Supressão de ruído</span>
+            <div className="segmented wide">
+              {(Object.keys(NOISE_LABELS) as NoiseMode[]).map((m) => (
+                <button key={m} className={cx(ui.noiseSuppression === m && 'active')} title={NOISE_LABELS[m].description} onClick={() => void voice.setMicPrefs({ noiseSuppression: m })}>
+                  {NOISE_LABELS[m].title}
+                </button>
+              ))}
+            </div>
+            <p className="small muted">{NOISE_LABELS[ui.noiseSuppression].description}</p>
+          </div>
+          <Toggle
+            label="Cancelamento de eco"
+            description="Evita que quem fala com você se ouça de volta pelo seu microfone."
+            checked={ui.echoCancellation}
+            onChange={(v) => void voice.setMicPrefs({ echoCancellation: v })}
+          />
+          <Toggle
+            label="Controle automático de ganho"
+            description="Ajusta sozinho o volume da sua voz quando você se afasta ou se aproxima do microfone."
+            checked={ui.autoGainControl}
+            onChange={(v) => void voice.setMicPrefs({ autoGainControl: v })}
+          />
+          <Toggle
+            label="Determinar a sensibilidade automaticamente"
+            description="Só transmite quando o som passa do ruído de fundo."
+            checked={ui.sensitivityAuto}
+            onChange={(v) => void voice.setMicPrefs({ sensitivityAuto: v })}
+          />
+          {!ui.sensitivityAuto && (
+            <div className="field">
+              <span>
+                Sensibilidade de entrada <em className="muted">{ui.inputThreshold} dB</em>
+              </span>
+              <MicMeter read={read} threshold={ui.inputThreshold} onThreshold={(db) => void voice.setMicPrefs({ inputThreshold: db })} />
+              <p className="small muted">Arraste: abaixo da marca o microfone fica fechado. A barra fica verde quando você está sendo transmitido.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="settings-divider" />
+
+      <Toggle
+        label="Apertar para falar"
+        description="Seu microfone só transmite enquanto a tecla estiver pressionada (com o Concord em primeiro plano)."
+        checked={ui.pttEnabled}
+        onChange={(v) => voice.setPushToTalk({ pttEnabled: v })}
+      />
+      {ui.pttEnabled && (
+        <div className="settings-grid">
+          <div className="field">
+            <span>Atalho</span>
+            <PttKeyButton />
+          </div>
+          <label className="field">
+            <span>
+              Atraso ao soltar <em className="muted">{ui.pttDelay} ms</em>
+            </span>
+            <input type="range" min={0} max={1000} step={20} value={ui.pttDelay} onChange={(e) => voice.setPushToTalk({ pttDelay: Number(e.target.value) })} />
+          </label>
+        </div>
+      )}
+
+      <div className="settings-divider" />
+
+      <h3 className="settings-title">Câmera</h3>
       <label className="field">
         <span>Câmera</span>
-        <select value={videoDeviceId} onChange={(e) => void voice.setVideoDevice(e.target.value)}>
+        <select value={ui.videoDeviceId} onChange={(e) => void voice.setVideoDevice(e.target.value)}>
           <option value="">Padrão</option>
           {cameras.map((d, i) => (
             <option key={d.deviceId} value={d.deviceId}>
@@ -1289,11 +1497,10 @@ function VoiceSettings() {
           ))}
         </select>
       </label>
-      <CameraPreview deviceId={videoDeviceId} />
-      {unlabeled && <p className="muted small">Os nomes dos dispositivos aparecem depois que você permitir o microfone e a câmera (use “Testar câmera”).</p>}
-      <p className="muted small">Cancelamento de eco, supressão de ruído e controle de ganho automático estão sempre ativos.</p>
+      <CameraPreview deviceId={ui.videoDeviceId} />
+      {unlabeled && <p className="muted small">Os nomes dos dispositivos aparecem depois que você permitir o microfone e a câmera.</p>}
       <p className="muted small">
-        Transporte de voz: {mode === 'livekit' ? 'servidor de mídia (LiveKit)' : 'ponto a ponto (WebRTC)'} — definido pelo servidor.
+        Transporte de voz: {ui.mode === 'livekit' ? 'servidor de mídia (LiveKit)' : 'ponto a ponto (WebRTC)'}, definido pelo servidor.
       </p>
     </div>
   );
@@ -1390,7 +1597,7 @@ function AppSettings() {
 
 // ---------- Misc ----------
 
-function ScreenPickerModal() {
+function ScreenPickerModal({ replace }: { replace: boolean }) {
   const [sources, setSources] = useState<ScreenSource[] | null>(null);
   useEffect(() => {
     native?.screen
@@ -1402,11 +1609,11 @@ function ScreenPickerModal() {
   function pick(id: string) {
     native?.screen.select(id);
     closeModal();
-    void voice.startScreenShare();
+    void (replace ? voice.replaceScreenShare() : voice.startScreenShare());
   }
 
   return (
-    <Modal wide title="Compartilhar tela" subtitle="Escolha uma tela ou janela para transmitir." onClose={closeModal}>
+    <Modal wide title={replace ? 'Alterar a transmissão' : 'Compartilhar tela'} subtitle="Escolha uma tela ou janela para transmitir." onClose={closeModal}>
       {!sources && <Spinner />}
       <div className="source-grid">
         {sources?.map((s) => (
@@ -1416,6 +1623,48 @@ function ScreenPickerModal() {
           </button>
         ))}
       </div>
+    </Modal>
+  );
+}
+
+function NicknameModal({ guildId, userId }: { guildId: string; userId: string }) {
+  const isMe = useStore((s) => s.me?.id === userId);
+  const current = useStore((s) => s.members[guildId]?.[userId]?.nickname ?? '');
+  const fallback = useStore((s) => s.users[userId]?.display_name || s.users[userId]?.username || '');
+  const guildName = useStore((s) => s.guilds[guildId]?.name ?? '');
+  const [nick, setNick] = useState(current);
+  const { busy, error, run } = useBusy();
+  const save = (e: FormEvent) => {
+    e.preventDefault();
+    void run(async () => {
+      await api(`/guilds/${guildId}/members/${isMe ? '@me' : userId}`, { method: 'PATCH', body: { nickname: nick.trim() || null } });
+      closeModal();
+      toast('Apelido atualizado');
+    });
+  };
+  return (
+    <Modal
+      title={isMe ? 'Editar perfil por servidor' : 'Alterar apelido'}
+      subtitle={isMe ? `Como você aparece em ${guildName}. Só vale para este servidor.` : `O apelido aparece em ${guildName}.`}
+      onClose={closeModal}
+    >
+      <form onSubmit={save}>
+        <label className="field">
+          <span>Apelido</span>
+          <input value={nick} onChange={(e) => setNick(e.target.value)} placeholder={fallback} maxLength={32} autoFocus />
+        </label>
+        {error && <p className="form-error">{error}</p>}
+        <div className="modal-actions">
+          {current && (
+            <button type="button" className="link" onClick={() => setNick('')}>
+              Remover apelido
+            </button>
+          )}
+          <button className="btn btn-primary" disabled={busy}>
+            Salvar
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 }
@@ -1469,7 +1718,7 @@ export function Modals() {
 function renderModal(modal: ModalState, threadName: string): ReactNode {
   switch (modal.type) {
     case 'createGuild':
-      return <CreateGuildModal />;
+      return <CreateGuildModal key={modal.inviteCode ?? ''} initialCode={modal.inviteCode} />;
     case 'invite':
       return <InviteModal guildId={modal.guildId} />;
     case 'createChannel':
@@ -1479,11 +1728,13 @@ function renderModal(modal: ModalState, threadName: string): ReactNode {
     case 'guildSettings':
       return <GuildSettingsModal key={modal.guildId} guildId={modal.guildId} />;
     case 'userSettings':
-      return <UserSettingsModal />;
+      return <UserSettingsModal initialTab={modal.tab} />;
     case 'profile':
       return <ProfileModal key={modal.userId} userId={modal.userId} guildId={modal.guildId} />;
     case 'screenPicker':
-      return <ScreenPickerModal />;
+      return <ScreenPickerModal replace={!!modal.replace} />;
+    case 'nickname':
+      return <NicknameModal guildId={modal.guildId} userId={modal.userId} />;
     case 'image':
       return <ImageModal url={modal.url} filename={modal.filename} />;
     case 'createGroup':

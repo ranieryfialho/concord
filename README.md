@@ -42,7 +42,7 @@ Bancos criados pela versão anterior são migrados automaticamente na primeira i
 
 **Contas e perfil:** registro e login (senha com scrypt, sessão por token), nome de exibição, avatar, status (disponível, ausente, não perturbe, invisível), status personalizado, perfil com cargos e servidores em comum.
 
-**Servidores:** criar, renomear, ícone, excluir, transferir posse; convites com código (expiração e limite de usos); categorias recolhíveis; canais de texto e de voz; tópico do canal.
+**Servidores:** criar, renomear, ícone, excluir, transferir posse; convites por link `https://seudominio/invite/CÓDIGO` (quem abre o link entra ou cria a conta e cai direto no convite; no chat, o link abre dentro do app) com expiração e limite de usos; categorias recolhíveis; canais de texto e de voz; tópico do canal.
 
 **Cargos e permissões:** cargos ilimitados (até 50) com nome, cor, exibição separada na lista de membros e ordem; 16 permissões (ver canais, enviar mensagens, anexar, reagir, criar threads, gerenciar mensagens/canais/cargos/servidor, expulsar, convidar, apelidos, conectar, falar, transmitir, administrador); hierarquia (só se gerencia quem está abaixo); permissões por canal com permitir/herdar/negar por cargo e sincronização com a categoria. O servidor só envia a cada membro os canais e mensagens que ele pode ver.
 
@@ -52,14 +52,24 @@ Bancos criados pela versão anterior são migrados automaticamente na primeira i
 
 **Amigos, DMs e grupos:** pedidos de amizade; DMs 1:1; **grupos** de até 10 amigos com nome editável, adicionar e remover pessoas, sair do grupo e mensagens de sistema.
 
-**Voz e vídeo:** canais de voz e **chamadas em DMs e grupos** (com toque, atender e recusar); silenciar e ensurdecer; indicador de quem fala; câmera; compartilhamento de tela **com o áudio do PC sem as vozes da chamada** (o som do próprio Concord é excluído da captura, então ninguém se ouve de volta) e seletor de fontes no desktop; grade e modo destaque; troca de microfone e saída; reconexão automática.
+**Voz e vídeo:** canais de voz e **chamadas em DMs e grupos** (com toque, atender e recusar); silenciar e ensurdecer; indicador de quem fala; câmera; compartilhamento de tela **com o áudio do PC sem as vozes da chamada** (o som do próprio Concord é excluído da captura, então ninguém se ouve de volta) e seletor de fontes no desktop; grade e modo destaque; **tela cheia** em qualquer vídeo ou transmissão (botão no canto ou duplo clique); botão para **ocultar quem está sem vídeo** e deixar só câmeras e telas; troca de microfone e saída; reconexão automática.
 Dois modos de transporte, escolhidos pelo servidor:
 - **P2P (padrão):** WebRTC em malha, sem servidor de mídia. Ideal até ~6–8 pessoas por canal. Com `TURN_*` configurado, funciona mesmo em redes restritivas.
 - **LiveKit (opcional):** um servidor de mídia (SFU) para canais grandes. Liga sozinho quando `LIVEKIT_*` está definido; o cliente baixa a biblioteca só nesse caso.
 
-**Moderação e controles na voz:** clique com o botão direito em alguém na sala (ou use o botão ⋮ no vídeo) para ajustar o volume dessa pessoa de 0 a 200% e silenciá-la só para você (fica salvo neste aparelho). Quem tem as permissões **Silenciar membros** / **Mover membros** / **Expulsar membros** também pode silenciar para todos, mover para outra sala de voz, desconectar da voz ou expulsar do servidor. Cada canal de voz tem um chat de texto próprio, no painel ao lado da sala.
+**Moderação e controles na voz:** clique com o botão direito em alguém na sala (ou use o botão ⋮ no vídeo) para ajustar o volume dessa pessoa de 0 a 200% e silenciá-la só para você (fica salvo neste aparelho). Quando ela transmite a tela, o som da transmissão tem **volume e silenciar próprios**, separados da voz (também pelo botão de som no canto da transmissão). Quem tem as permissões **Silenciar membros** / **Mover membros** / **Expulsar membros** também pode silenciar para todos, mover para outra sala de voz, desconectar da voz ou expulsar do servidor. Cada canal de voz tem um chat de texto próprio, no painel ao lado da sala.
 
 **Dispositivos:** escolha de microfone, saída de áudio e câmera nas configurações (com prévia da câmera) e direto na chamada, pela setinha ao lado dos botões de microfone e câmera. A troca acontece sem cair da ligação.
+
+**Configurações de voz:** volume do microfone e do alto-falante (0–200%), teste do microfone (você se ouve como os outros te ouvem, com medidor), **perfis de entrada** (Isolamento de voz, Estúdio ou Personalizado, com cancelamento de eco, ganho automático, supressão de ruído e sensibilidade automática ou manual com marcador no medidor) e **apertar para falar** (tecla do teclado ou botão lateral do mouse, com atraso ao soltar; funciona com o Concord em primeiro plano).
+
+**Menu do participante** (botão direito): perfil, mencionar, volume da voz e da transmissão, silenciar para você, apelido por servidor, cargos, mover, silenciar voz / desativar áudio no servidor, desconectar, expulsar e copiar ID.
+
+**Transmissão:** com a tela compartilhada, o botão abre o menu: parar, **alterar a transmissão** (troca a tela/janela sem encerrar), **qualidade** (720p30, 1080p30, 1080p60 ou original) e ligar/desligar o **áudio da transmissão**. Quem assiste pode abrir a transmissão em **janela flutuante**.
+
+**Atualizações:** quando o servidor passa a servir uma versão nova do app, todos os conectados recebem um aviso com o botão **Reiniciar agora** (o app desktop também, porque carrega o app do servidor).
+
+**Supressão de ruído:** como a do Discord. A **Avançada (IA)**, padrão, usa o RNNoise (uma rede neural pequena, em WebAssembly, rodando no seu computador) para tirar teclado, ventilador, trânsito e outros ruídos de fundo da sua voz; também há a **Padrão** (filtro do navegador) e **Desligada** (para música ou microfone de estúdio). Escolha em Configurações → Voz e vídeo ou na setinha do microfone durante a chamada.
 
 **Transcrição de chamadas:** qualquer participante liga a transcrição pelo botão de legendas. Todos veem o aviso "Transcrevendo", as legendas aparecem ao vivo sobre o vídeo e o painel lista cada fala com nome e horário, com download em `.txt`. Cada pessoa envia só o próprio microfone, então o texto já sai identificado. Por padrão roda o **Whisper "small" no próprio servidor** (gratuito, o áudio não sai da sua máquina; o modelo de ~250 MB é baixado na primeira vez). Cada fala é **salva no banco** assim que é transcrita: o botão de transcrições no topo do canal de voz (ou da DM) tem as abas "Ao vivo" e "Salvas", com o histórico para ler, baixar em `.txt` ou excluir. Quem pode ver o canal pode ler; excluir, só quem iniciou ou quem tem "Gerenciar mensagens". Sessões em que ninguém falou não são guardadas.
 
