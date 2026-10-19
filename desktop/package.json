@@ -69,7 +69,8 @@
         }
       ],
       "category": "Network;InstantMessaging",
-      "maintainer": "Raniery Fialho <noreply@rafiweb.com.br>"
+      "maintainer": "Raniery Fialho <noreply@rafiweb.com.br>",
+      "executableName": "concord"
     }
   }
 }
