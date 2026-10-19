@@ -7,12 +7,14 @@ import {
   HeadphoneOff,
   Headphones,
   Maximize2,
+  MessageSquare,
   Mic,
   MicOff,
   Monitor,
   MonitorOff,
   PhoneOff,
   ScrollText,
+  SlidersHorizontal,
   Video,
   VideoOff,
   Volume2,
@@ -22,13 +24,16 @@ import { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { api } from '../api';
 import { P, has } from '../permissions';
-import { channelLabel, closeModal, getState, nameOf, openModal, toast, useStore } from '../store';
+import { channelLabel, closeModal, getState, isUnread, nameOf, openModal, toast, useStore } from '../store';
 import type { Channel, SavedTranscript, TranscriptEntry } from '../types';
 import { cx } from '../utils';
 import { type StreamKind, transcriptionAvailable, useVoice, voice } from '../voice';
 import { Avatar, Spinner } from './common';
 import { DeviceMenu } from './DeviceMenu';
 import { startScreenShare } from './UserPanel';
+import { Composer } from './Composer';
+import { MessageList, TypingIndicator } from './ChatView';
+import { openVoiceUserMenu } from './VoiceUserMenu';
 
 function VideoEl({ stream, mirror = false, contain = false }: { stream: MediaStream; mirror?: boolean; contain?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -102,7 +107,11 @@ function TileView({ tile, guildId, focused, onFocus }: { tile: Tile; guildId: st
   const meId = useStore((s) => s.me?.id);
   const isScreen = tile.kind === 'screen';
   return (
-    <div className={cx('voice-tile', speaking && !isScreen && 'speaking', focused && 'focused', isScreen && 'screen')} onClick={onFocus}>
+    <div
+      className={cx('voice-tile', speaking && !isScreen && 'speaking', focused && 'focused', isScreen && 'screen')}
+      onClick={onFocus}
+      onContextMenu={(e) => openVoiceUserMenu(e, tile.userId, guildId)}
+    >
       {tile.stream ? (
         <VideoEl stream={tile.stream} mirror={!isScreen && tile.userId === meId} contain={isScreen} />
       ) : (
@@ -121,6 +130,9 @@ function TileView({ tile, guildId, focused, onFocus }: { tile: Tile; guildId: st
         <span className="truncate">{isScreen ? `Tela de ${name}` : name}</span>
       </div>
       {isScreen && <span className="live-badge tile-live">Ao vivo</span>}
+      <button className="voice-tile-menu icon-btn" title="Opções do usuário" onClick={(e) => openVoiceUserMenu(e, tile.userId, guildId)}>
+        <SlidersHorizontal size={15} />
+      </button>
       <button className="voice-tile-expand icon-btn" title="Destacar">
         <Maximize2 size={15} />
       </button>
@@ -533,9 +545,22 @@ function TranscriptLine({ userId, guildId, at, text }: { userId: string; guildId
   );
 }
 
+/** Text chat of the voice channel, shown beside the stage like Discord's. */
+function VoiceChatPanel({ channel }: { channel: Channel }) {
+  return (
+    <aside className="side-panel voice-chat">
+      <MessageList channel={channel} />
+      <Composer channel={channel} />
+      <TypingIndicator channel={channel} />
+    </aside>
+  );
+}
+
 export function VoiceView({ channel }: { channel: Channel }) {
   const count = useParticipants(channel.id).length;
   const transcriptOpen = useVoice((s) => s.transcriptOpen);
+  const chatOpen = useVoice((s) => s.chatOpen);
+  const unread = useStore((s) => isUnread(s, channel));
   return (
     <div className="voice-view">
       <header className="chat-header voice-header">
@@ -544,9 +569,16 @@ export function VoiceView({ channel }: { channel: Channel }) {
         <span className="small muted">{count === 1 ? '1 na sala' : `${count} na sala`}</span>
         <div className="chat-header-actions">
           <button
+            className={cx('icon-btn', chatOpen && !transcriptOpen && 'active', unread && !chatOpen && 'has-unread')}
+            title="Chat de texto da sala"
+            onClick={() => useVoice.setState({ chatOpen: !(chatOpen && !transcriptOpen), transcriptOpen: false })}
+          >
+            <MessageSquare size={20} />
+          </button>
+          <button
             className={cx('icon-btn', transcriptOpen && 'active')}
             title="Transcrições"
-            onClick={() => useVoice.setState({ transcriptOpen: !transcriptOpen })}
+            onClick={() => useVoice.setState({ transcriptOpen: !transcriptOpen, chatOpen: false })}
           >
             <ScrollText size={20} />
           </button>
@@ -557,7 +589,7 @@ export function VoiceView({ channel }: { channel: Channel }) {
           <VoiceStage channel={channel} />
           <VoiceControls channel={channel} />
         </div>
-        {transcriptOpen && <TranscriptPanel channel={channel} />}
+        {transcriptOpen ? <TranscriptPanel channel={channel} /> : chatOpen && <VoiceChatPanel channel={channel} />}
       </div>
     </div>
   );

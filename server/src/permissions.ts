@@ -20,14 +20,16 @@ export const P = {
   MANAGE_NICKNAMES: 1 << 13,
   CREATE_THREADS: 1 << 14,
   ADMINISTRATOR: 1 << 15,
+  MOVE_MEMBERS: 1 << 16,
+  MUTE_MEMBERS: 1 << 17,
 } as const;
 
-export const ALL_PERMISSIONS = (P.ADMINISTRATOR << 1) - 1;
+export const ALL_PERMISSIONS = (P.MUTE_MEMBERS << 1) - 1;
 export const DEFAULT_EVERYONE = DEFAULT_EVERYONE_PERMISSIONS;
 export const DM_PERMISSIONS =
   P.VIEW_CHANNEL | P.SEND_MESSAGES | P.ATTACH_FILES | P.ADD_REACTIONS | P.CONNECT | P.SPEAK | P.STREAM;
 
-export const MESSAGEABLE = new Set(['text', 'dm', 'group_dm', 'thread']);
+export const MESSAGEABLE = new Set(['text', 'voice', 'dm', 'group_dm', 'thread']);
 
 export function has(perms: number, bit: number): boolean {
   return (perms & bit) === bit;

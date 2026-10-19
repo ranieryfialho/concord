@@ -35,12 +35,18 @@ interface VoiceUI {
   /** Bumped when a local track is swapped inside the same stream, so previews re-render. */
   deviceTick: number;
   transcriptOpen: boolean;
+  /** Text chat panel next to a voice channel. */
+  chatOpen: boolean;
+  /** Per-person playback volume in percent (100 = untouched, up to 200), only on this device. */
+  userVolumes: Record<string, number>;
+  /** People muted just for me. */
+  localMuted: Record<string, boolean>;
 }
 
 const PREFS_KEY = 'concord.voice';
 
 function loadPrefs() {
-  const defaults = { selfMute: false, selfDeaf: false, inputDeviceId: '', outputDeviceId: '', videoDeviceId: '' };
+  const defaults = { selfMute: false, selfDeaf: false, inputDeviceId: '', outputDeviceId: '', videoDeviceId: '', userVolumes: {}, localMuted: {} };
   try {
     return { ...defaults, ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') };
   } catch {
@@ -62,13 +68,14 @@ export const useVoice = create<VoiceUI>()(() => ({
   localScreen: null,
   deviceTick: 0,
   transcriptOpen: false,
+  chatOpen: true,
   ...loadPrefs(),
 }));
 
 function savePrefs() {
-  const { selfMute, selfDeaf, inputDeviceId, outputDeviceId, videoDeviceId } = useVoice.getState();
+  const { selfMute, selfDeaf, inputDeviceId, outputDeviceId, videoDeviceId, userVolumes, localMuted } = useVoice.getState();
   try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify({ selfMute, selfDeaf, inputDeviceId, outputDeviceId, videoDeviceId }));
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ selfMute, selfDeaf, inputDeviceId, outputDeviceId, videoDeviceId, userVolumes, localMuted }));
   } catch {
     /* ignore */
   }
@@ -162,6 +169,7 @@ class VoiceManager {
   // shared
   private analysers = new Map<string, () => void>();
   private audioCtx: AudioContext | null = null;
+  private boost = new WeakMap<HTMLMediaElement, GainNode>();
   private awaitingJoin: string | null = null;
   private rejoin: { guildId: string | null; channelId: string } | null = null;
   private capture: SpeechCapture | null = null;
@@ -422,8 +430,10 @@ class VoiceManager {
         const el = track.attach();
         el.muted = useVoice.getState().selfDeaf;
         el.style.display = 'none';
+        el.dataset.uid = uid;
         document.body.appendChild(el);
         this.lkAudio.set(sid, el);
+        this.applyUserVolume(uid);
       } else {
         track.detach().forEach((el) => el.remove());
         this.lkAudio.delete(sid);
@@ -562,6 +572,7 @@ class VoiceManager {
       el.muted = useVoice.getState().selfDeaf;
       this.applySink(el);
       peer.audioEls.set(stream.id, el);
+      this.applyUserVolume(uid);
       void el.play().catch(() => {});
       const kind = useVoice.getState().streamKinds[uid]?.[stream.id];
       if (kind !== 'screen') this.watchSpeaking(uid, stream);
@@ -892,6 +903,66 @@ class VoiceManager {
       return;
     }
     for (const peer of this.peers.values()) for (const el of peer.audioEls.values()) this.applySink(el);
+    this.applyContextSink();
+  }
+
+  // ---------- Per-person volume (local only) ----------
+
+  /** Elements currently playing this person's audio, in either backend. */
+  private audioFor(uid: string): HTMLMediaElement[] {
+    const els: HTMLMediaElement[] = [...(this.peers.get(uid)?.audioEls.values() ?? [])];
+    for (const el of this.lkAudio.values()) if (el.dataset.uid === uid) els.push(el);
+    return els;
+  }
+
+  /**
+   * <audio>.volume tops out at 100%. To go up to 200% the element is routed through a GainNode, created
+   * only when somebody actually boosts (a media element can't be detached from the graph afterwards).
+   */
+  private applyUserVolume(uid: string) {
+    const { userVolumes, localMuted } = useVoice.getState();
+    const gain = localMuted[uid] ? 0 : (userVolumes[uid] ?? 100) / 100;
+    for (const el of this.audioFor(uid)) {
+      let node = this.boost.get(el);
+      if (!node && gain > 1) {
+        try {
+          this.audioCtx ??= new AudioContext();
+          if (this.audioCtx.state === 'suspended') void this.audioCtx.resume();
+          node = this.audioCtx.createGain();
+          this.audioCtx.createMediaElementSource(el).connect(node);
+          node.connect(this.audioCtx.destination);
+          this.boost.set(el, node);
+          this.applyContextSink();
+        } catch {
+          /* no WebAudio: stay at 100% */
+        }
+      }
+      if (node) {
+        el.volume = 1;
+        node.gain.value = gain;
+      } else {
+        el.volume = Math.min(1, gain);
+      }
+    }
+  }
+
+  private applyContextSink() {
+    const ctx = this.audioCtx as (AudioContext & { setSinkId?: (id: string) => Promise<void> }) | null;
+    const { outputDeviceId } = useVoice.getState();
+    if (ctx?.setSinkId) void ctx.setSinkId(outputDeviceId || '').catch(() => {});
+  }
+
+  setUserVolume(uid: string, percent: number) {
+    const value = Math.max(0, Math.min(200, Math.round(percent)));
+    useVoice.setState((s) => ({ userVolumes: { ...s.userVolumes, [uid]: value } }));
+    this.applyUserVolume(uid);
+    savePrefs();
+  }
+
+  toggleLocalMute(uid: string) {
+    useVoice.setState((s) => ({ localMuted: { ...s.localMuted, [uid]: !s.localMuted[uid] } }));
+    this.applyUserVolume(uid);
+    savePrefs();
   }
 
   private applySink(el: HTMLAudioElement) {

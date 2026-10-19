@@ -3,6 +3,7 @@ import { openChannel } from '../gateway';
 import { native } from '../native';
 import { HOME, ackChannel, getState, totalMentions, useStore } from '../store';
 import { ChatView } from './ChatView';
+import { ContextMenuHost } from './ContextMenu';
 import { FriendsView } from './FriendsView';
 import { GuildSidebar } from './GuildSidebar';
 import { HomeSidebar } from './HomeSidebar';
@@ -62,6 +63,7 @@ export function Layout() {
       <main className="main">{main}</main>
       <Modals />
       <IncomingCall />
+      <ContextMenuHost />
       {toastMessage && <div className="toast">{toastMessage}</div>}
     </div>
   );

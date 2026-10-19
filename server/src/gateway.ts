@@ -51,6 +51,7 @@ function handleOp(conn: Conn, msg: ClientMessage) {
         self_deaf: !!d.self_deaf,
         self_video: false,
         self_stream: false,
+        server_mute: false,
         suppress: !has(perms, P.SPEAK),
       });
       if (isPrivate) onPrivateVoiceJoin(channel, conn.userId);

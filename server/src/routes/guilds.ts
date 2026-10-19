@@ -6,14 +6,16 @@ import {
   type GuildContext,
   P,
   type RoleRow,
+  channelPermissions,
   getGuild,
+  getChannel,
   guildContext,
   has,
   requireGuild,
 } from '../permissions.js';
 import { limits } from '../ratelimit.js';
 import { guildPayload } from '../ready.js';
-import { dispatch, leaveVoiceWhere, presenceOf } from '../realtime.js';
+import { dispatch, leaveVoice, leaveVoiceWhere, presenceOf, setVoiceState, voiceStates } from '../realtime.js';
 import { dispatchChannel, resyncGuild } from '../sync.js';
 import { publicUrl, removeUpload, uploadImage } from '../uploads.js';
 import { HttpError, inviteCode, optionalText, snowflake, text } from '../util.js';
@@ -160,6 +162,41 @@ guildsRouter.delete('/guilds/:id/members/:userId', (req, res) => {
     throw new HttpError(403, 'Você não pode expulsar alguém com cargo igual ou superior ao seu');
   }
   removeMember(ctx, target);
+  res.status(204).end();
+});
+
+// Voice moderation: server-mute, disconnect or move someone who is in a voice channel of this guild.
+guildsRouter.patch('/guilds/:id/voice-states/:userId', (req, res) => {
+  const ctx = requireGuild(req.params.id, req.userId);
+  const actor = ctx.base(req.userId);
+  const target = req.params.userId;
+  const state = voiceStates.get(target);
+  if (!state || state.guild_id !== ctx.guild.id) throw new HttpError(404, 'Essa pessoa não está em um canal de voz deste servidor');
+
+  const { mute, channel_id: destination } = (req.body ?? {}) as { mute?: unknown; channel_id?: unknown };
+  if (mute === undefined && destination === undefined) throw new HttpError(400, 'Nada para alterar');
+
+  if (mute !== undefined) {
+    if (typeof mute !== 'boolean') throw new HttpError(400, 'Valor inválido');
+    if (!has(actor, P.MUTE_MEMBERS)) throw new HttpError(403, 'Você não tem permissão para silenciar membros');
+    const channel = getChannel(state.channel_id);
+    const canSpeak = !!channel && has(channelPermissions(channel, target, ctx), P.SPEAK);
+    setVoiceState({ ...state, server_mute: mute, suppress: mute || !canSpeak });
+  }
+
+  if (destination !== undefined) {
+    if (!has(actor, P.MOVE_MEMBERS)) throw new HttpError(403, 'Você não tem permissão para mover membros');
+    if (destination === null) {
+      leaveVoice(target); // the client sees its own state vanish and tears the call down
+    } else {
+      const channel = typeof destination === 'string' ? getChannel(destination) : undefined;
+      if (!channel || channel.guild_id !== ctx.guild.id || channel.type !== 'voice') throw new HttpError(404, 'Canal de voz não encontrado');
+      if (!has(channelPermissions(channel, req.userId, ctx), P.CONNECT)) throw new HttpError(403, 'Você não pode entrar nesse canal');
+      if (!has(channelPermissions(channel, target, ctx), P.CONNECT)) throw new HttpError(403, 'Essa pessoa não pode entrar nesse canal');
+      // The target's own client performs the join (WebRTC is negotiated client-side).
+      dispatch([target], 'VOICE_MOVE', { guild_id: ctx.guild.id, channel_id: channel.id, by: req.userId });
+    }
+  }
   res.status(204).end();
 });
 

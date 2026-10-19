@@ -18,7 +18,9 @@ export interface VoiceState {
   self_deaf: boolean;
   self_video: boolean;
   self_stream: boolean;
-  /** Server-side mute: the member lacks the SPEAK permission. */
+  /** A moderator muted this member (MUTE_MEMBERS). Cleared when they leave the channel. */
+  server_mute: boolean;
+  /** Cannot transmit audio: lacks SPEAK or is server-muted. */
   suppress: boolean;
 }
 

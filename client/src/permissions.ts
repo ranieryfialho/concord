@@ -16,6 +16,8 @@ export const P = {
   MANAGE_NICKNAMES: 1 << 13,
   CREATE_THREADS: 1 << 14,
   ADMINISTRATOR: 1 << 15,
+  MOVE_MEMBERS: 1 << 16,
+  MUTE_MEMBERS: 1 << 17,
 } as const;
 
 export type PermissionKey = keyof typeof P;
@@ -59,6 +61,8 @@ export const PERMISSION_GROUPS: { title: string; items: PermissionInfo[] }[] = [
       { key: 'CONNECT', label: 'Conectar', description: 'Entrar nos canais de voz.' },
       { key: 'SPEAK', label: 'Falar', description: 'Falar nos canais de voz. Sem isso a pessoa entra silenciada.' },
       { key: 'STREAM', label: 'Vídeo e transmissão', description: 'Ligar a câmera e compartilhar a tela.' },
+      { key: 'MUTE_MEMBERS', label: 'Silenciar membros', description: 'Silenciar outras pessoas nos canais de voz, para todos.' },
+      { key: 'MOVE_MEMBERS', label: 'Mover membros', description: 'Mover pessoas entre canais de voz e desconectá-las da voz.' },
     ],
   },
   {

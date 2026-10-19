@@ -19,6 +19,7 @@ import {
   selectGuild,
   setState,
   toChannel,
+  toast,
   toMember,
   upsertChannel,
   upsertUsers,
@@ -262,6 +263,13 @@ const handlers: Record<string, Handler> = {
   },
 
   VOICE_SIGNAL: (d: { from: string; data: unknown }) => voice.onSignal(d.from, d.data),
+
+  // A moderator moved us: our own client does the join (WebRTC is negotiated here).
+  VOICE_MOVE: (d: { guild_id: string; channel_id: string }) => {
+    if (!getState().channels[d.channel_id]) return;
+    toast('Você foi movido para outro canal de voz');
+    void voice.join(d.guild_id, d.channel_id);
+  },
 
   TRANSCRIPTION_UPDATE: (d: Omit<Transcription, 'entries'>) => {
     setState((s) => {

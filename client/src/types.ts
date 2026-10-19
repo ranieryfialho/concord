@@ -121,6 +121,8 @@ export interface VoiceState {
   self_deaf: boolean;
   self_video: boolean;
   self_stream: boolean;
+  /** Muted by a moderator (MUTE_MEMBERS). */
+  server_mute: boolean;
   suppress: boolean;
 }
 

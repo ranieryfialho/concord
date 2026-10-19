@@ -4,6 +4,7 @@ import {
   AtSign,
   ChevronRight,
   Hash,
+  Volume2,
   LogOut,
   MessagesSquare,
   Phone,
@@ -49,7 +50,7 @@ import { TranscriptPanel, VoiceControls, VoiceStage } from './VoiceView';
 
 const GROUP_WINDOW = 7 * 60 * 1000;
 
-function TypingIndicator({ channel }: { channel: Channel }) {
+export function TypingIndicator({ channel }: { channel: Channel }) {
   const typing = useStore((s) => s.typing[channel.id]);
   const meId = useStore((s) => s.me?.id);
   const [now, setNow] = useState(Date.now());
@@ -115,13 +116,12 @@ function ChannelIntro({ channel }: { channel: Channel }) {
       </div>
     );
   }
+  const voice = channel.type === 'voice';
   return (
     <div className="channel-intro">
-      <div className="channel-intro-icon">
-        <Hash size={44} />
-      </div>
-      <h1>Boas-vindas a #{label}!</h1>
-      <p className="muted">Este é o começo do canal #{label}.</p>
+      <div className="channel-intro-icon">{voice ? <Volume2 size={44} /> : <Hash size={44} />}</div>
+      <h1>{voice ? `Chat de ${label}` : `Boas-vindas a #${label}!`}</h1>
+      <p className="muted">{voice ? 'Mensagens de texto desta sala de voz.' : `Este é o começo do canal #${label}.`}</p>
     </div>
   );
 }
@@ -153,7 +153,7 @@ function StarterMessage({ channel }: { channel: Channel }) {
   );
 }
 
-function MessageList({ channel }: { channel: Channel }) {
+export function MessageList({ channel }: { channel: Channel }) {
   const bucket = useStore((s) => s.messages[channel.id]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);

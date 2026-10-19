@@ -267,7 +267,7 @@ export function threadForMessage(s: State, messageId: string): Channel | undefin
 }
 
 export function isUnread(s: State, c: Channel): boolean {
-  if (c.type === 'voice' || c.type === 'category') return false;
+  if (c.type === 'category') return false;
   if (!c.last_message_id) return false;
   const read = s.readStates[c.id];
   return !read || c.last_message_id > read;
