@@ -1,0 +1,13 @@
+{
+  "name": "@concord/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Concord desktop shell",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^44.9.0"
+  }
+}

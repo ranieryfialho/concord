@@ -1,0 +1,61 @@
+# Produção na VPS (atrás do Nginx Proxy Manager). Usa a imagem pronta do GHCR,
+# publicada pelo workflow .github/workflows/deploy.yml — nada é buildado na VPS.
+# Fica em ~/concord/ junto com o .env (copie de .env.example).
+# No NPM: Proxy Host CONCORD_DOMAIN -> http://concord:3001, "Websockets Support" ligado, SSL Let's Encrypt.
+
+services:
+  concord:
+    image: ghcr.io/ranieryfialho/concord:latest
+    container_name: concord
+    restart: unless-stopped
+    environment:
+      TRUST_PROXY: "1"
+      TURN_URLS: "turn:${TURN_HOST}:3478?transport=udp,turn:${TURN_HOST}:3478?transport=tcp"
+      TURN_SECRET: ${TURN_SECRET}
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+    volumes:
+      - concord-data:/data
+    networks:
+      - proxy
+    # Whisper não pode sufocar os outros sites da VPS.
+    cpus: ${CONCORD_CPUS:-2}
+    mem_limit: ${CONCORD_MEMORY:-3g}
+
+  coturn:
+    image: coturn/coturn:4.7
+    container_name: concord-coturn
+    restart: unless-stopped
+    network_mode: host
+    cpus: 1
+    mem_limit: 256m
+    command:
+      - -n
+      - --listening-port=3478
+      - --fingerprint
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET}
+      - --realm=${CONCORD_DOMAIN}
+      - --min-port=49160
+      - --max-port=49200
+      - --no-cli
+      - --no-tls
+      - --no-dtls
+      - --no-multicast-peers
+      # TURN nunca retransmite para redes privadas (SSRF), inclusive as redes Docker desta VPS.
+      - --denied-peer-ip=0.0.0.0-0.255.255.255
+      - --denied-peer-ip=10.0.0.0-10.255.255.255
+      - --denied-peer-ip=100.64.0.0-100.127.255.255
+      - --denied-peer-ip=127.0.0.0-127.255.255.255
+      - --denied-peer-ip=169.254.0.0-169.254.255.255
+      - --denied-peer-ip=172.16.0.0-172.31.255.255
+      - --denied-peer-ip=192.168.0.0-192.168.255.255
+
+volumes:
+  concord-data:
+
+networks:
+  proxy:
+    name: ${NPM_NETWORK}
+    external: true

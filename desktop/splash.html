@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+    <title>Concord</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #1b1c20;
+        color: #dcdee4;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        -webkit-app-region: drag;
+        user-select: none;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+      }
+      .mark {
+        width: 84px;
+        height: 84px;
+        border-radius: 26px;
+        background: linear-gradient(135deg, #7b6bff, #4f3fe0);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 44px;
+        font-weight: 800;
+        color: white;
+        animation: pulse 1.6s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        50% {
+          transform: scale(0.92);
+          border-radius: 42px;
+        }
+      }
+      .status {
+        font-size: 13px;
+        color: #969aa6;
+        text-align: center;
+        padding: 0 24px;
+      }
+      .title {
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="mark">C</div>
+    <div class="title">Concord</div>
+    <div class="status" id="status">Iniciando…</div>
+    <script>
+      window.setStatus = (text) => {
+        document.getElementById('status').textContent = text;
+      };
+    </script>
+  </body>
+</html>

@@ -1,0 +1,12 @@
+# HTTPS certificates are issued automatically by Let's Encrypt.
+# WebSockets (/gateway) are proxied transparently.
+
+{$CONCORD_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy concord:3001
+}
+
+# LiveKit signaling (only used with `--profile livekit`).
+{$LIVEKIT_DOMAIN} {
+	reverse_proxy host.docker.internal:7880
+}
