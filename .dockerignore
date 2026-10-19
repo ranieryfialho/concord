@@ -1,7 +1,8 @@
 **/node_modules
 **/dist
 server/data
-desktop
+desktop/*
+!desktop/package.json
 deploy
 *.log
 .git
