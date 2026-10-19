@@ -8,6 +8,7 @@ export interface UserRow {
   username: string;
   display_name: string | null;
   password_hash: string;
+  recovery_hash: string | null;
   avatar_url: string | null;
   status: string;
   custom_status: string | null;
@@ -90,7 +91,7 @@ export function publicUser(u: UserRow) {
 export type PublicUser = ReturnType<typeof publicUser>;
 
 export function privateUser(u: UserRow) {
-  return { ...publicUser(u), status: u.status };
+  return { ...publicUser(u), status: u.status, has_recovery_code: !!u.recovery_hash };
 }
 
 export function getUser(id: string): UserRow | undefined {

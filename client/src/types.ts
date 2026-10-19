@@ -14,6 +14,7 @@ export interface User {
 
 export interface Me extends User {
   status: UserStatus;
+  has_recovery_code: boolean;
 }
 
 export interface Guild {

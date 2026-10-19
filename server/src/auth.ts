@@ -27,6 +27,12 @@ export function verifyPassword(password: string, stored: string): boolean {
   return crypto.timingSafeEqual(expected, actual);
 }
 
+/** Drops every session of the user, except `keepToken` when given. */
+export function deleteSessions(userId: string, keepToken?: string) {
+  if (keepToken) q.run('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?', userId, sha256(keepToken));
+  else q.run('DELETE FROM sessions WHERE user_id = ?', userId);
+}
+
 export function createSession(userId: string): string {
   const token = randomToken();
   q.run('INSERT INTO sessions (token_hash, user_id, created_at) VALUES (?, ?, ?)', sha256(token), userId, Date.now());

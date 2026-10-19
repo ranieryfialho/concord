@@ -65,6 +65,8 @@ Dois modos de transporte, escolhidos pelo servidor:
 
 **Segurança:** limite de requisições (login, cadastro, mensagens, uploads, convites e gateway); prévias de links protegidas contra SSRF (bloqueia IPs internos em cada DNS e redirecionamento); TURN não retransmite para redes privadas; CSP no app; uploads que não são mídia são servidos como download.
 
+**Recuperação de senha:** sem e-mail, a conta usa um código de recuperação (`XXXXX-XXXXX-XXXXX-XXXXX`, 100 bits) mostrado uma vez no cadastro e guardado só como hash. Na tela de login, "Esqueceu a senha?" pede usuário + código + nova senha; o reset encerra todas as sessões e troca o código. Em Configurações > Minha conta dá para trocar a senha (pede a atual) e gerar um novo código (contas antigas ganham o primeiro por aí). Tentativas de reset: 5/hora por conta e 10/hora por IP.
+
 **Desktop:** splash, janela sem moldura, minimizar para a bandeja, iniciar minimizado, posição e tamanho lembrados, instância única, notificações nativas, contador na barra de tarefas, piscar ao receber mensagem ou chamada.
 
 ## Colocar no ar (para os amigos usarem)

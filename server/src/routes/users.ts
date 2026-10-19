@@ -1,11 +1,13 @@
 import { Router } from 'express';
+import { deleteSessions, hashPassword, verifyPassword } from '../auth.js';
+import { issueRecoveryCode } from '../recovery.js';
 import { q, tx } from '../db.js';
 import { type ChannelRow, type UserRow, getUser, privateUser, publicUser } from '../models.js';
 import { limits } from '../ratelimit.js';
 import { privateChannelPayload } from '../ready.js';
 import { broadcastPresence, dispatch, presenceAudience, presenceOf } from '../realtime.js';
 import { publicUrl, removeUpload, uploadImage } from '../uploads.js';
-import { HttpError, optionalText, snowflake } from '../util.js';
+import { HttpError, optionalText, snowflake, text } from '../util.js';
 
 export const usersRouter = Router();
 
@@ -37,6 +39,23 @@ export function sharePresences(userIds: string[]) {
 
 usersRouter.get('/users/@me', (req, res) => {
   res.json(privateUser(getUser(req.userId)!));
+});
+
+usersRouter.post('/users/@me/password', limits.password, (req, res) => {
+  const current = text(req.body?.current_password, 'Senha atual', { max: 128 });
+  const next = text(req.body?.new_password, 'Nova senha', { min: 6, max: 128 });
+  const user = getUser(req.userId)!;
+  if (!verifyPassword(current, user.password_hash)) throw new HttpError(403, 'Senha atual incorreta');
+  q.run('UPDATE users SET password_hash = ? WHERE id = ?', hashPassword(next), user.id);
+  deleteSessions(user.id, String(req.headers.authorization)); // sign out everywhere else
+  res.status(204).end();
+});
+
+// Replaces the recovery code (also how accounts created before codes existed get one).
+usersRouter.post('/users/@me/recovery-code', limits.password, (req, res) => {
+  const password = text(req.body?.password, 'Senha', { max: 128 });
+  if (!verifyPassword(password, getUser(req.userId)!.password_hash)) throw new HttpError(403, 'Senha incorreta');
+  res.json({ recovery_code: issueRecoveryCode(req.userId) });
 });
 
 usersRouter.patch('/users/@me', (req, res) => {

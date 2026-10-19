@@ -4,6 +4,7 @@ import { type ThemePref, setThemePref, useTheme } from '../theme';
 import { useMediaDevices } from './DeviceMenu';
 import { useShallow } from 'zustand/react/shallow';
 import { api } from '../api';
+import { RecoveryCodeBox } from './AuthScreen';
 import { type ScreenSource, native } from '../native';
 import { CHANNEL_PERMISSION_KEYS, P, PERMISSION_GROUPS, type PermissionKey, colorHex, has } from '../permissions';
 import { logout } from '../session';
@@ -1127,7 +1128,82 @@ function AccountSettings({ me }: { me: Me }) {
           Salvar alterações
         </button>
       </div>
+      <SecuritySettings me={me} />
     </form>
+  );
+}
+
+function SecuritySettings({ me }: { me: Me }) {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [recoveryPassword, setRecoveryPassword] = useState('');
+  const [code, setCode] = useState<string | null>(null);
+  const change = useBusy();
+  const regen = useBusy();
+
+  const changePassword = () =>
+    void change.run(async () => {
+      await api('/users/@me/password', { body: { current_password: current, new_password: next } });
+      setCurrent('');
+      setNext('');
+      toast('Senha alterada. As outras sessões foram encerradas.');
+    });
+
+  const newCode = () =>
+    void regen.run(async () => {
+      const res = await api<{ recovery_code: string }>('/users/@me/recovery-code', { body: { password: recoveryPassword } });
+      setRecoveryPassword('');
+      setCode(res.recovery_code);
+      setState({ me: { ...me, has_recovery_code: true } });
+    });
+
+  // Rendered inside the profile <form>, so every button here is type="button".
+  return (
+    <div className="security-settings">
+      <h3 className="settings-title">Senha</h3>
+      <label className="field">
+        <span>Senha atual</span>
+        <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" />
+      </label>
+      <label className="field">
+        <span>Nova senha</span>
+        <input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" minLength={6} />
+      </label>
+      {change.error && <p className="form-error">{change.error}</p>}
+      <div className="modal-actions">
+        <span />
+        <button type="button" className="btn btn-primary" disabled={change.busy || !current || next.length < 6} onClick={changePassword}>
+          Alterar senha
+        </button>
+      </div>
+
+      <h3 className="settings-title">Código de recuperação</h3>
+      <p className="muted small">
+        {me.has_recovery_code
+          ? 'Use o código para redefinir a senha pela tela de login, caso esqueça. Gerar um novo invalida o anterior.'
+          : 'Você ainda não tem um código de recuperação. Gere um e guarde em lugar seguro.'}
+      </p>
+      {code ? (
+        <>
+          <RecoveryCodeBox code={code} />
+          <p className="muted small">Anote agora: este código não será mostrado de novo.</p>
+        </>
+      ) : (
+        <>
+          <label className="field">
+            <span>Confirme sua senha</span>
+            <input type="password" value={recoveryPassword} onChange={(e) => setRecoveryPassword(e.target.value)} autoComplete="current-password" />
+          </label>
+          {regen.error && <p className="form-error">{regen.error}</p>}
+          <div className="modal-actions">
+            <span />
+            <button type="button" className="btn btn-secondary" disabled={regen.busy || !recoveryPassword} onClick={newCode}>
+              {me.has_recovery_code ? 'Gerar novo código' : 'Gerar código'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

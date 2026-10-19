@@ -271,9 +271,15 @@ function migrateTo3() {
   `);
 }
 
+function migrateTo4() {
+  // sha256 of the account recovery code (see recovery.ts); NULL until the user generates one.
+  db.exec('ALTER TABLE users ADD COLUMN recovery_hash TEXT;');
+}
+
 const MIGRATIONS: [number, () => void][] = [
   [2, migrateTo2],
   [3, migrateTo3],
+  [4, migrateTo4],
 ];
 
 {

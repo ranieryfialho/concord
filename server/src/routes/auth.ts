@@ -1,8 +1,9 @@
 import { Router } from 'express';
-import { createSession, deleteSession, hashPassword, requireAuth, verifyPassword } from '../auth.js';
+import { createSession, deleteSession, deleteSessions, hashPassword, requireAuth, verifyPassword } from '../auth.js';
 import { q } from '../db.js';
 import { type UserRow, getUser, privateUser } from '../models.js';
 import { limits } from '../ratelimit.js';
+import { issueRecoveryCode, recoveryCodeMatches } from '../recovery.js';
 import { HttpError, optionalText, snowflake, text } from '../util.js';
 
 export const authRouter = Router();
@@ -25,7 +26,8 @@ authRouter.post('/auth/register', limits.register, (req, res) => {
     hashPassword(password),
     Date.now(),
   );
-  res.status(201).json({ token: createSession(id), user: privateUser(getUser(id)!) });
+  const recoveryCode = issueRecoveryCode(id);
+  res.status(201).json({ token: createSession(id), user: privateUser(getUser(id)!), recovery_code: recoveryCode });
 });
 
 authRouter.post('/auth/login', limits.login, (req, res) => {
@@ -34,6 +36,20 @@ authRouter.post('/auth/login', limits.login, (req, res) => {
   const user = q.get<UserRow>('SELECT * FROM users WHERE username = ?', username);
   if (!user || !verifyPassword(password, user.password_hash)) throw new HttpError(401, 'Usuário ou senha incorretos');
   res.json({ token: createSession(user.id), user: privateUser(user) });
+});
+
+// Forgot-password flow: username + recovery code + new password. Every session is revoked and the used code is replaced.
+authRouter.post('/auth/reset-password', limits.resetIp, limits.resetAccount, (req, res) => {
+  const username = text(req.body?.username, 'Nome de usuário', { max: 32 });
+  const code = text(req.body?.recovery_code, 'Código de recuperação', { max: 64 });
+  const password = text(req.body?.new_password, 'Nova senha', { min: 6, max: 128 });
+  const user = q.get<UserRow>('SELECT * FROM users WHERE username = ?', username);
+  if (!user || !recoveryCodeMatches(user.recovery_hash, code)) throw new HttpError(401, 'Usuário ou código de recuperação incorretos');
+
+  q.run('UPDATE users SET password_hash = ? WHERE id = ?', hashPassword(password), user.id);
+  deleteSessions(user.id);
+  const recoveryCode = issueRecoveryCode(user.id);
+  res.json({ token: createSession(user.id), user: privateUser(getUser(user.id)!), recovery_code: recoveryCode });
 });
 
 authRouter.post('/auth/logout', requireAuth, (req, res) => {

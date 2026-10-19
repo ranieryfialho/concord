@@ -54,6 +54,10 @@ export function rateLimit(limit: number, windowMs: number, key: (req: Request) =
 export const limits = {
   register: rateLimit(10, 60 * 60_000, byIp),
   login: rateLimit(10, 15 * 60_000, byIp),
+  // Recovery codes are the only secret here, so guess attempts are capped per IP and per account.
+  resetIp: rateLimit(10, 60 * 60_000, byIp),
+  resetAccount: rateLimit(5, 60 * 60_000, (req) => `reset:${String(req.body?.username ?? '').toLowerCase()}`),
+  password: rateLimit(10, 15 * 60_000),
   api: rateLimit(300, 60_000),
   messages: rateLimit(10, 10_000),
   uploads: rateLimit(10, 60_000),
