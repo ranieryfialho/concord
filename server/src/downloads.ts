@@ -7,7 +7,7 @@ import express, { Router } from 'express';
 // electron-builder spells the Linux arch x86_64 (AppImage) and amd64 (deb).
 export const DOWNLOADS_DIR = path.resolve(process.env.DOWNLOADS_DIR ?? '/downloads');
 
-const FILE = /^Concord-(\d+\.\d+\.\d+)-(win|mac|linux)-(x64|arm64)\.(exe|dmg|AppImage|deb)$/;
+const FILE = /^Concord-(\d+\.\d+\.\d+)-(win|mac|linux)-(x64|arm64|x86_64|amd64)\.(exe|dmg|AppImage|deb)$/;
 const OS_LABEL = { win: 'Windows', mac: 'macOS', linux: 'Linux' } as const;
 const OS_ORDER = ['win', 'mac', 'linux'] as const;
 const ARCH_LABEL = { x64: 'Intel / 64-bit', x86_64: '64-bit', amd64: '64-bit (Debian/Ubuntu)', arm64: 'Apple Silicon / ARM64' } as const;
