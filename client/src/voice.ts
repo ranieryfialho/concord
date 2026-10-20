@@ -890,6 +890,11 @@ class VoiceManager {
     this.mic = null;
   }
 
+  /** Plays our call microphone (as sent) back to us, for the mic test during a call. */
+  monitorMic(): (() => void) | null {
+    return this.pipe?.monitor(useVoice.getState().outputDeviceId) ?? null;
+  }
+
   /** Live microphone level for meters: null when no microphone is open. */
   micLevel(): { level: number; threshold: number | null; open: boolean } | null {
     const p = this.pipe;

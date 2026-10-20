@@ -66,9 +66,22 @@ export function useMicTest() {
   const reopenKey = `${prefs.inputDeviceId}|${settings.echoCancellation}|${settings.noiseSuppression}|${settings.autoGainControl}`;
   const [running, setRunning] = useState(false);
 
+  const inCall = !!prefs.channelId;
+
+  // In a call the microphone is already open: listen to it instead of opening a second capture.
+  useEffect(() => {
+    if (!running || !inCall) return;
+    const stop = voice.monitorMic();
+    if (!stop) {
+      toast('Seu microfone não está aberto nesta chamada');
+      setRunning(false);
+    }
+    return () => stop?.();
+  }, [running, inCall, reopenKey]);
+
   // (Re)open when started or when a setting that needs a new capture changes.
   useEffect(() => {
-    if (!running) return;
+    if (!running || inCall) return;
     let cancelled = false;
     let opened: MicPipeline | null = null;
     MicPipeline.open(prefs.inputDeviceId, micSettings(useVoice.getState()))
@@ -90,7 +103,7 @@ export function useMicTest() {
       setPipe(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running, reopenKey]);
+  }, [running, inCall, reopenKey]);
 
   // Volume and sensitivity apply live.
   useEffect(() => {

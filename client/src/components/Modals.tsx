@@ -1323,7 +1323,6 @@ function VoiceSettings() {
       outputVolume: s.outputVolume,
       pttEnabled: s.pttEnabled,
       pttDelay: s.pttDelay,
-      inCall: !!s.channelId,
     })),
   );
   const devices = useMediaDevices();
@@ -1393,13 +1392,9 @@ function VoiceSettings() {
       </div>
 
       <div className="mic-test-row">
-        {ui.inCall ? (
-          <span className="small muted mic-test-note">Na chamada: o medidor mostra o seu microfone ao vivo.</span>
-        ) : (
-          <button className={cx('btn', test.running ? 'btn-secondary' : 'btn-primary')} onClick={test.toggle}>
-            {test.running ? 'Parar teste' : 'Teste do microfone'}
-          </button>
-        )}
+        <button className={cx('btn', test.running ? 'btn-secondary' : 'btn-primary')} onClick={test.toggle}>
+          {test.running ? 'Parar teste' : 'Teste do microfone'}
+        </button>
         <MicMeter read={read} />
       </div>
       {test.running && <p className="small muted">Fale algo: você vai se ouvir como os outros te ouvem. Use fones para não dar eco.</p>}

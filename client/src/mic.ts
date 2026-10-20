@@ -67,7 +67,11 @@ export function micSettings(p: MicPrefs): MicSettings {
   };
 }
 
-export function micConstraints(deviceId: string, s: MicSettings): MediaTrackConstraints {
+// Narrow return type: newer DOM typings widen echoCancellation to boolean | string, which LiveKit's options reject.
+export function micConstraints(
+  deviceId: string,
+  s: MicSettings,
+): { deviceId?: ConstrainDOMString; echoCancellation: boolean; noiseSuppression: boolean; autoGainControl: boolean } {
   return {
     deviceId: deviceId ? { exact: deviceId } : undefined,
     echoCancellation: s.echoCancellation,
