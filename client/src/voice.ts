@@ -217,6 +217,7 @@ interface Peer {
   senders: Map<string, RTCRtpSender>;
   /** Remote audio being played, by stream id (microphone and screen audio are separate streams). */
   outputs: Map<string, RemoteAudio>;
+  iceWatch?: ReturnType<typeof setTimeout>;
 }
 
 // ---------- Remote audio playback ----------
@@ -300,6 +301,7 @@ class Mixer {
 
 type Signal =
   | { type: 'meta'; kinds: Record<string, StreamKind> }
+  | { type: 'reset' }
   | { type: 'description'; description: RTCSessionDescriptionInit }
   | { type: 'candidate'; candidate: RTCIceCandidateInit };
 
@@ -396,8 +398,16 @@ class VoiceManager {
     }
     this.applyMicEnabled();
     if (this.mic) this.watchSpeaking(this.meId(), this.mic);
+    // People already in the room may have connected to us while the mic was opening (their signals create
+    // the peer here); those connections were made without our mic, so add it now.
+    if (this.mic && this.peers.size) {
+      this.sendMeta();
+      for (const peer of this.peers.values()) this.addLocalTracks(peer);
+    }
+    // Whoever joins calls everyone already in the room; they answer (see onVoiceState / onSignal). Only one side
+    // starting avoids crossed offers, after which Chrome can leave the connection stuck.
     for (const v of Object.values(getState().voiceStates)) {
-      if (v.channel_id === channelId && v.user_id !== this.meId()) this.ensurePeer(v.user_id);
+      if (v.channel_id === channelId && v.user_id !== this.meId()) this.call(v.user_id);
     }
     void this.loadTranscription(channelId);
   }
@@ -507,8 +517,7 @@ class VoiceManager {
 
     if (v.channel_id === ui.channelId) {
       if (prev?.channel_id !== ui.channelId) {
-        sounds.join();
-        if (!this.isLiveKit()) this.ensurePeer(v.user_id);
+        sounds.join(); // they call us once their microphone is ready
       }
       if (!v.self_stream) this.dropRemoteKind(v.user_id, 'screen');
       if (!v.self_video) this.dropRemoteKind(v.user_id, 'camera');
@@ -638,17 +647,32 @@ class VoiceManager {
     if (!ui.channelId || this.isLiveKit()) return;
     const v = getState().voiceStates[from];
     if (!v || v.channel_id !== ui.channelId) return;
+    const signal = data as Signal;
+    if (signal.type === 'reset') {
+      this.closePeer(from); // they start over with a new connection
+      return;
+    }
+    if (signal.type === 'meta' && !this.peers.has(from)) {
+      this.setStreamKinds(from, signal.kinds); // arrives just before their offer
+      return;
+    }
+    // Only an offer opens a connection; stray answers/candidates belong to one we already closed.
+    if (!this.peers.has(from) && !(signal.type === 'description' && signal.description.type === 'offer')) return;
     const peer = this.ensurePeer(from);
     peer.queue = peer.queue
-      .then(() => this.processSignal(from, peer, data as Signal))
+      .then(() => this.processSignal(from, peer, signal))
       .catch((err) => console.warn('[voice] signal failed', err));
+  }
+
+  private setStreamKinds(uid: string, kinds: Record<string, StreamKind>) {
+    useVoice.setState((s) => ({ streamKinds: { ...s.streamKinds, [uid]: kinds } }));
+    this.applyGains(uid); // a stream's kind decides which volume applies to it
   }
 
   private async processSignal(uid: string, p: Peer, data: Signal) {
     const pc = p.pc;
     if (data.type === 'meta') {
-      useVoice.setState((s) => ({ streamKinds: { ...s.streamKinds, [uid]: data.kinds } }));
-      this.applyGains(uid); // a stream's kind decides which volume applies to it
+      this.setStreamKinds(uid, data.kinds);
       return;
     }
     if (data.type === 'description') {
@@ -719,17 +743,54 @@ class VoiceManager {
       if (e.candidate) this.signal(uid, { type: 'candidate', candidate: e.candidate.toJSON() });
     };
     pc.ontrack = (e) => this.onTrack(uid, peer, e);
+    pc.onsignalingstatechange = () => {
+      if (pc.signalingState === 'stable') this.watchIce(peer);
+    };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'failed') pc.restartIce();
       useVoice.setState((s) => ({ connection: { ...s.connection, [uid]: pc.connectionState } }));
     };
 
     this.sendMeta(uid);
-    for (const [stream] of this.localStreams()) {
-      for (const track of stream.getTracks()) peer.senders.set(track.id, pc.addTrack(track, stream));
-    }
+    this.addLocalTracks(peer);
     if (useVoice.getState().localScreen) setTimeout(() => this.tuneScreenSenders(), 1500);
     return peer;
+  }
+
+  /** Opens a connection to someone in the room and makes the offer (even with nothing to send yet). */
+  private call(uid: string) {
+    const peer = this.ensurePeer(uid);
+    if (!peer.pc.getTransceivers().length) peer.pc.addTransceiver('audio', { direction: 'recvonly' }); // listen-only
+  }
+
+  /**
+   * When two offers cross anyway (both sides renegotiating at once), Chrome can end up never gathering ICE
+   * candidates on the side that rolled back: negotiation completes but the connection stays "new" forever, and
+   * an ICE restart doesn't revive it. Start over with a fresh connection; the impolite side does it, so the two
+   * sides don't race again.
+   */
+  private watchIce(peer: Peer) {
+    clearTimeout(peer.iceWatch);
+    if (peer.polite) return;
+    peer.iceWatch = setTimeout(() => {
+      const { pc } = peer;
+      if (pc.signalingState !== 'stable' || pc.iceConnectionState !== 'new') return;
+      const uid = [...this.peers].find(([, p]) => p === peer)?.[0];
+      if (!uid) return;
+      console.warn('[voice] connection stuck, starting over with', uid);
+      this.closePeer(uid);
+      this.signal(uid, { type: 'reset' });
+      this.call(uid);
+    }, 4000);
+  }
+
+  /** Sends every local track this peer isn't getting yet (adding one triggers renegotiation). */
+  private addLocalTracks(peer: Peer) {
+    for (const [stream] of this.localStreams()) {
+      for (const track of stream.getTracks()) {
+        if (!peer.senders.has(track.id)) peer.senders.set(track.id, peer.pc.addTrack(track, stream));
+      }
+    }
   }
 
   private onTrack(uid: string, peer: Peer, e: RTCTrackEvent) {
@@ -776,6 +837,7 @@ class VoiceManager {
   private closePeer(uid: string) {
     const peer = this.peers.get(uid);
     if (!peer) return;
+    clearTimeout(peer.iceWatch);
     peer.pc.close();
     for (const out of peer.outputs.values()) out.stop();
     this.peers.delete(uid);
