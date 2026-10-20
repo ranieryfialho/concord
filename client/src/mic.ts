@@ -166,7 +166,13 @@ export class MicPipeline {
     dest.channelCount = 1;
 
     let node: AudioNode = this.source.connect(this.input);
-    if (denoiser) node = node.connect(denoiser);
+    if (denoiser) {
+      // RNNoise outputs stereo with only the left channel filled: keep that channel as mono, so it plays in both
+      // ears and isn't halved when mixed down for sending.
+      const mono = ctx.createChannelSplitter(2);
+      node.connect(denoiser).connect(mono);
+      node = mono;
+    }
     node.connect(this.analyser);
     node.connect(this.gateNode).connect(dest);
     this.track = dest.stream.getAudioTracks()[0];
