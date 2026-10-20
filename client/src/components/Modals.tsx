@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Camera, Check, Copy, Crown, ExternalLink, Minus, MonitorCog, Moon, Plus, Sun, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Camera, Check, Copy, Crown, ExternalLink, Minus, Monitor, MonitorCog, Moon, Plus, Sun, Trash2, X } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { type ThemePref, setThemePref, useTheme } from '../theme';
 import { useMediaDevices } from './DeviceMenu';
@@ -1597,14 +1597,23 @@ function ScreenPickerModal({ replace }: { replace: boolean }) {
   useEffect(() => {
     native?.screen
       .getSources()
-      .then(setSources)
-      .catch(() => setSources([]));
+      .then((list) => {
+        // No list (Wayland: the system shows its own picker, or listing failed): let getDisplayMedia ask.
+        if (list.length) setSources(list);
+        else start();
+      })
+      .catch(start);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function start() {
+    closeModal();
+    void (replace ? voice.replaceScreenShare() : voice.startScreenShare());
+  }
 
   function pick(id: string) {
     native?.screen.select(id);
-    closeModal();
-    void (replace ? voice.replaceScreenShare() : voice.startScreenShare());
+    start();
   }
 
   return (
@@ -1613,7 +1622,13 @@ function ScreenPickerModal({ replace }: { replace: boolean }) {
       <div className="source-grid">
         {sources?.map((s) => (
           <button key={s.id} className="source-card" onClick={() => pick(s.id)}>
-            <img src={s.thumbnail} alt="" />
+            {s.thumbnail ? (
+              <img src={s.thumbnail} alt="" />
+            ) : (
+              <span className="source-thumb-empty">
+                <Monitor size={28} />
+              </span>
+            )}
             <span className="truncate small">{s.name}</span>
           </button>
         ))}

@@ -3269,12 +3269,19 @@ h4 {
 .source-card:hover {
   border-color: var(--accent);
 }
-.source-card img {
+.source-card img,
+.source-thumb-empty {
   width: 100%;
   aspect-ratio: 16 / 9;
   object-fit: contain;
   background: #000;
   border-radius: 8px;
+}
+/* Some Linux setups give no preview image. */
+.source-thumb-empty {
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .image-backdrop {

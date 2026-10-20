@@ -27,6 +27,11 @@ let splashWindow = null;
 let tray = null;
 let quitting = false;
 let pendingScreenSource = null;
+
+/** Native Wayland session: screen capture goes through the desktop portal (PipeWire), with its own picker. */
+function waylandCapture() {
+  return process.platform === 'linux' && process.env.XDG_SESSION_TYPE === 'wayland' && app.commandLine.getSwitchValue('ozone-platform') !== 'x11';
+}
 let settings = {};
 
 // ---------- Settings (window bounds, tray behaviour) ----------
@@ -270,9 +275,11 @@ function registerIpc() {
   });
 
   ipcMain.handle('screen:sources', async (e) => {
-    if (!fromApp(e)) return [];
+    // On Wayland every getSources() opens the system's own screen picker: skip ours (an empty list tells the
+    // web app to start right away) so the user picks once, in the system dialog.
+    if (!fromApp(e) || waylandCapture()) return [];
     const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 320, height: 180 } });
-    return sources.map((s) => ({ id: s.id, name: s.name, thumbnail: s.thumbnail.toDataURL() }));
+    return sources.map((s) => ({ id: s.id, name: s.name, thumbnail: s.thumbnail.isEmpty() ? '' : s.thumbnail.toDataURL() }));
   });
   ipcMain.on('screen:select', (e, id) => {
     if (fromApp(e)) pendingScreenSource = String(id);
@@ -285,13 +292,19 @@ function configureSession() {
   ses.setPermissionRequestHandler((wc, permission, callback) => callback(isOwnUrl(wc.getURL()) && allowed.has(permission)));
   ses.setPermissionCheckHandler((wc, permission) => !!wc && isOwnUrl(wc.getURL()) && allowed.has(permission));
 
-  // getDisplayMedia() in the renderer resolves to the source chosen in our picker.
+  // getDisplayMedia() in the renderer resolves to the source chosen in our picker (on Wayland, in the system's).
   ses.setDisplayMediaRequestHandler(async (_request, callback) => {
-    const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
-    const chosen = sources.find((s) => s.id === pendingScreenSource) ?? sources[0];
-    pendingScreenSource = null;
-    if (!chosen) return callback({});
-    callback({ video: chosen, audio: process.platform === 'win32' ? 'loopback' : undefined });
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
+      const chosen = sources.find((s) => s.id === pendingScreenSource) ?? sources[0];
+      pendingScreenSource = null;
+      if (!chosen) return callback({});
+      // Computer audio only exists on Windows; elsewhere the key must be left out (undefined is rejected).
+      callback(process.platform === 'win32' ? { video: chosen, audio: 'loopback' } : { video: chosen });
+    } catch (err) {
+      console.warn('[screen] capture failed', err);
+      callback({}); // rejects getDisplayMedia instead of leaving it pending forever
+    }
   });
 }
 
