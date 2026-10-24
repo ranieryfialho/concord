@@ -3901,6 +3901,16 @@ h4 {
   display: flex;
   min-height: 0;
 }
+/* The channel sidebar inside its resizable wrapper fills it. */
+.resizable-panel > .sidebar {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+.resizable-panel.left > .resize-handle {
+  left: auto;
+  right: -6px;
+}
 /* Shown whenever it is open, even on narrow windows where plain side panels are hidden. */
 .resizable-panel > .side-panel {
   display: flex;

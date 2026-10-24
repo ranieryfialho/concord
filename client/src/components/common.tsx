@@ -192,16 +192,19 @@ export function useLongPress(onLongPress: (x: number, y: number) => void) {
 }
 
 /**
- * A right-hand column the user can widen or narrow by dragging its left edge. The width is remembered
- * under `storageKey`; double-clicking the edge restores the default.
+ * A column the user can widen or narrow by dragging its inner edge (the left edge of a right-hand
+ * column, the right edge of a left-hand one). The width is remembered under `storageKey`;
+ * double-clicking the edge restores the default.
  */
 export function ResizablePanel({
   storageKey,
   initial = 360,
   min = 280,
   max = 760,
+  side = 'right',
   children,
 }: {
+  side?: 'left' | 'right';
   storageKey: string;
   initial?: number;
   min?: number;
@@ -245,7 +248,9 @@ export function ResizablePanel({
     const startX = e.clientX;
     const startWidth = latest.current;
     document.body.classList.add('col-resizing');
-    const onMove = (ev: globalThis.PointerEvent) => setPreferred(Math.max(min, Math.min(startWidth + startX - ev.clientX, max)));
+    const dir = side === 'right' ? -1 : 1;
+    const onMove = (ev: globalThis.PointerEvent) =>
+      setPreferred(Math.max(min, Math.min(startWidth + dir * (ev.clientX - startX), max)));
     const onUp = () => {
       document.body.classList.remove('col-resizing');
       window.removeEventListener('pointermove', onMove);
@@ -258,7 +263,7 @@ export function ResizablePanel({
   }
 
   return (
-    <div className="resizable-panel" ref={ref} style={{ width }}>
+    <div className={cx('resizable-panel', side)} ref={ref} style={{ width }}>
       <div
         className="resize-handle"
         role="separator"

@@ -14,7 +14,7 @@ import { Modals } from './Modals';
 import { ServerRail } from './ServerRail';
 import { UserPanel } from './UserPanel';
 import { VoiceView } from './VoiceView';
-import { useIsMobile } from './common';
+import { ResizablePanel, useIsMobile } from './common';
 
 export function Layout() {
   const view = useStore((s) => s.view);
@@ -46,6 +46,13 @@ export function Layout() {
     };
   }, []);
 
+  const sidebar = (
+    <aside className="sidebar">
+      {view.guildId === HOME ? <HomeSidebar /> : <GuildSidebar key={view.guildId} guildId={view.guildId} />}
+      <UserPanel />
+    </aside>
+  );
+
   let main;
   if (channel?.type === 'voice') main = <VoiceView channel={channel} />;
   else if (channel && channel.type !== 'category') main = <ChatView key={channel.id} channel={channel} />;
@@ -61,10 +68,13 @@ export function Layout() {
   return (
     <div className={`layout pane-${mobilePane}`}>
       <ServerRail />
-      <aside className="sidebar">
-        {view.guildId === HOME ? <HomeSidebar /> : <GuildSidebar key={view.guildId} guildId={view.guildId} />}
-        <UserPanel />
-      </aside>
+      {mobile ? (
+        sidebar
+      ) : (
+        <ResizablePanel side="left" storageKey="concord.sidebarWidth" initial={248} min={200} max={440}>
+          {sidebar}
+        </ResizablePanel>
+      )}
       {/* Phone: mount the channel only once it is shown, so the composer sizes and focuses against a visible layout. */}
       <main className="main">{mobile && mobilePane === 'nav' ? null : main}</main>
       <Modals />
