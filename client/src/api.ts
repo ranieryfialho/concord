@@ -5,6 +5,7 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public field?: string,
   ) {
     super(message);
   }
@@ -42,7 +43,7 @@ export async function api<T = void>(path: string, opts: { method?: Method; body?
   const res = await fetch(`${API_BASE}/api${path}`, { method: opts.method ?? (body ? 'POST' : 'GET'), headers, body });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
-    throw new ApiError(res.status, data?.message ?? `Erro ${res.status}`);
+    throw new ApiError(res.status, data?.message ?? `Erro ${res.status}`, data?.field);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;

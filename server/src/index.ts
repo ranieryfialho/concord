@@ -77,7 +77,7 @@ if (fs.existsSync(path.join(CLIENT_DIST, 'index.html'))) {
 const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   removeRequestFiles(req.files ?? (req.file ? [req.file] : undefined));
   if (err instanceof HttpError) {
-    res.status(err.status).json({ message: err.message });
+    res.status(err.status).json({ message: err.message, field: err.field });
     return;
   }
   if (err instanceof multer.MulterError) {

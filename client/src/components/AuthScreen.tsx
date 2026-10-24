@@ -1,6 +1,6 @@
 import { Check, Copy, Download } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
-import { api } from '../api';
+import { ApiError, api } from '../api';
 import { native } from '../native';
 import { copyText } from '../store';
 
@@ -28,7 +28,8 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (token: strin
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [recoveryCode, setRecoveryCode] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  // `field` is the input the server blamed; errors without one (wrong login, rate limit) show above the button.
+  const [error, setError] = useState<{ field?: string; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
   // After sign-up / reset, hold the session until the user has seen the new recovery code.
   const [issued, setIssued] = useState<{ token: string; code: string } | null>(null);
@@ -56,7 +57,7 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (token: strin
       if (res.recovery_code) setIssued({ token: res.token, code: res.recovery_code });
       else onAuthenticated(res.token);
     } catch (err) {
-      setError((err as Error).message);
+      setError({ field: err instanceof ApiError ? err.field : undefined, message: (err as Error).message });
     } finally {
       setBusy(false);
     }
@@ -96,6 +97,7 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (token: strin
         <label className="field">
           <span>Nome de usuário</span>
           <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus autoComplete="username" required />
+          {error?.field === 'username' && <p className="form-error">{error.message}</p>}
         </label>
         {mode === 'register' && (
           <label className="field">
@@ -126,8 +128,9 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (token: strin
             required
             minLength={mode === 'login' ? undefined : 6}
           />
+          {error?.field === 'password' && <p className="form-error">{error.message}</p>}
         </label>
-        {error && <p className="form-error">{error}</p>}
+        {error && !error.field && <p className="form-error">{error.message}</p>}
         <button className="btn btn-primary btn-block" disabled={busy}>
           {mode === 'login' ? 'Entrar' : mode === 'register' ? 'Continuar' : 'Redefinir senha'}
         </button>

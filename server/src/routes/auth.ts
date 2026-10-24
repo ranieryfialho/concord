@@ -11,11 +11,13 @@ export const authRouter = Router();
 const USERNAME = /^[a-zA-Z0-9_.]{2,32}$/;
 
 authRouter.post('/auth/register', limits.register, (req, res) => {
-  const username = text(req.body?.username, 'Nome de usuário', { min: 2, max: 32 });
-  if (!USERNAME.test(username)) throw new HttpError(400, 'Use apenas letras, números, "_" e "."');
-  const password = text(req.body?.password, 'Senha', { min: 6, max: 128 });
+  const username = text(req.body?.username, 'Nome de usuário', { min: 2, max: 32, key: 'username' });
+  if (!USERNAME.test(username)) {
+    throw new HttpError(400, 'Use apenas letras, números, "_" e "." (sem "@" nem espaços)', 'username');
+  }
+  const password = text(req.body?.password, 'Senha', { min: 6, max: 128, key: 'password' });
   const displayName = optionalText(req.body?.display_name, 'Nome de exibição', 32) ?? null;
-  if (q.get('SELECT 1 FROM users WHERE username = ?', username)) throw new HttpError(409, 'Esse nome de usuário já existe');
+  if (q.get('SELECT 1 FROM users WHERE username = ?', username)) throw new HttpError(409, 'Esse nome de usuário já existe', 'username');
 
   const id = snowflake();
   q.run(
@@ -42,7 +44,7 @@ authRouter.post('/auth/login', limits.login, (req, res) => {
 authRouter.post('/auth/reset-password', limits.resetIp, limits.resetAccount, (req, res) => {
   const username = text(req.body?.username, 'Nome de usuário', { max: 32 });
   const code = text(req.body?.recovery_code, 'Código de recuperação', { max: 64 });
-  const password = text(req.body?.new_password, 'Nova senha', { min: 6, max: 128 });
+  const password = text(req.body?.new_password, 'Nova senha', { min: 6, max: 128, key: 'password' });
   const user = q.get<UserRow>('SELECT * FROM users WHERE username = ?', username);
   if (!user || !recoveryCodeMatches(user.recovery_hash, code)) throw new HttpError(401, 'Usuário ou código de recuperação incorretos');
 

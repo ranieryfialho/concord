@@ -4,6 +4,8 @@ export class HttpError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** Form field the error belongs to, so the client can show it next to that input. */
+    public field?: string,
   ) {
     super(message);
   }
@@ -47,12 +49,12 @@ export function inviteCode(): string {
   return code;
 }
 
-export function text(value: unknown, field: string, opts: { min?: number; max: number }): string {
-  if (typeof value !== 'string') throw new HttpError(400, `${field} inválido`);
+export function text(value: unknown, field: string, opts: { min?: number; max: number; key?: string }): string {
+  if (typeof value !== 'string') throw new HttpError(400, `${field} inválido`, opts.key);
   const s = value.trim();
   const min = opts.min ?? 1;
   if (s.length < min || s.length > opts.max) {
-    throw new HttpError(400, `${field} deve ter entre ${min} e ${opts.max} caracteres`);
+    throw new HttpError(400, `${field} deve ter entre ${min} e ${opts.max} caracteres`, opts.key);
   }
   return s;
 }
