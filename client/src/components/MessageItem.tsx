@@ -14,7 +14,8 @@ import {
   SmilePlus,
   Trash2,
 } from 'lucide-react';
-import { type KeyboardEvent, type ReactNode, memo, useState } from 'react';
+import { type KeyboardEvent, type MouseEvent, type ReactNode, memo, useState } from 'react';
+import { create } from 'zustand';
 import { api, fileUrl } from '../api';
 import { P, colorHex, has } from '../permissions';
 import {
@@ -35,7 +36,7 @@ import {
 import type { Attachment, Channel, Embed, Message } from '../types';
 import { cx, formatSize, messageTime, shortTime } from '../utils';
 import { useVoice, voice } from '../voice';
-import { Avatar } from './common';
+import { Avatar, useIsMobile } from './common';
 import { textToMentions } from './Composer';
 import { EmojiPicker } from './EmojiPicker';
 import { Markdown, isJumboEmoji, mentionsToText } from './Markdown';
@@ -257,6 +258,14 @@ function SystemMessage({ message, channel }: { message: Message; channel: Channe
   );
 }
 
+// Touch screens have no hover: tapping a message selects it, which shows its toolbar.
+const useTapped = create<{ id: string | null }>()(() => ({ id: null }));
+
+function toggleTapped(e: MouseEvent, id: string) {
+  if ((e.target as HTMLElement).closest('button, a, input, textarea, img, video, audio, .clickable, .reply-context')) return;
+  useTapped.setState((s) => ({ id: s.id === id ? null : id }));
+}
+
 export const MessageItem = memo(function MessageItem({
   message,
   grouped,
@@ -280,6 +289,8 @@ function UserMessage({ message, grouped, channel }: { message: Message; grouped:
   const thread = useStore((s) => (channel.type === 'text' ? threadForMessage(s, message.id) : undefined));
   const replyName = useStore((s) => (message.reply_to ? nameOf(s, message.reply_to.author.id, guildId) : ''));
   const [picker, setPicker] = useState(false);
+  const mobile = useIsMobile();
+  const tapped = useTapped((s) => s.id === message.id);
 
   const perms = channel.permissions;
   const isPrivate = channel.type === 'dm' || channel.type === 'group_dm';
@@ -321,7 +332,8 @@ function UserMessage({ message, grouped, channel }: { message: Message; grouped:
   return (
     <div
       id={`msg-${message.id}`}
-      className={cx('message', grouped && 'grouped', mentionsMe && 'mentioned', editing && 'editing', picker && 'hovering')}
+      className={cx('message', grouped && 'grouped', mentionsMe && 'mentioned', editing && 'editing', picker && 'hovering', tapped && 'tapped')}
+      onClick={mobile ? (e) => toggleTapped(e, message.id) : undefined}
     >
       {message.reply_to && (
         <div className="reply-context" onClick={() => jumpTo(message.reply_to!.id)}>

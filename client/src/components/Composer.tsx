@@ -5,7 +5,7 @@ import { P, has } from '../permissions';
 import { type State, channelLabel, getState, nameOf, sendMessage, setReplyingTo, setState, toast, useStore } from '../store';
 import type { Channel } from '../types';
 import { cx, formatSize } from '../utils';
-import { Avatar } from './common';
+import { Avatar, useIsMobile } from './common';
 import { EmojiPicker } from './EmojiPicker';
 
 const MAX_FILES = 10;
@@ -56,6 +56,8 @@ export function Composer({ channel }: { channel: Channel }) {
   const [text, setText] = useState(() => drafts.get(channel.id) ?? '');
   const [files, setFiles] = useState<File[]>([]);
   const [picker, setPicker] = useState(false);
+  // No autofocus on a phone: it would pop the keyboard every time a channel opens.
+  const mobile = useIsMobile();
   const [caret, setCaret] = useState(0);
   const [selected, setSelected] = useState(0);
   const replying = useStore((s) => s.replyingTo[channel.id] ?? null);
@@ -309,7 +311,7 @@ export function Composer({ channel }: { channel: Channel }) {
             onKeyUp={(e) => setCaret(e.currentTarget.selectionStart)}
             onClick={(e) => setCaret(e.currentTarget.selectionStart)}
             onPaste={onPaste}
-            autoFocus
+            autoFocus={!mobile}
           />
           <button className="icon-btn" onClick={() => setPicker(!picker)} title="Emoji">
             <Smile size={22} />

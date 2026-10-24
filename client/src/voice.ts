@@ -154,7 +154,8 @@ export const useVoice = create<VoiceUI>()(() => ({
   localScreen: null,
   deviceTick: 0,
   transcriptOpen: false,
-  chatOpen: true,
+  // On a phone the room chat would cover the whole stage, so it starts closed there.
+  chatOpen: !window.matchMedia('(max-width: 720px)').matches,
   pttActive: false,
   ...loadPrefs(),
 }));

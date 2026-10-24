@@ -1,7 +1,16 @@
-import { Users, X } from 'lucide-react';
-import { type ReactNode, useEffect } from 'react';
+import { ArrowLeft, Users, X } from 'lucide-react';
+import {
+  type MouseEvent,
+  type PointerEvent,
+  type ReactNode,
+  type TouchEvent,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { fileUrl } from '../api';
-import { nameOf, presenceOf, useStore } from '../store';
+import { nameOf, presenceOf, setState, useStore } from '../store';
 import type { Channel, Presence } from '../types';
 import { colorFor, cx, initials } from '../utils';
 
@@ -124,3 +133,146 @@ export function Modal({
 export function Spinner() {
   return <span className="spinner" aria-label="Carregando" />;
 }
+
+// Keep in sync with the phone breakpoint in styles.css.
+const mobileQuery = window.matchMedia('(max-width: 720px)');
+
+export function useIsMobile(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      mobileQuery.addEventListener('change', cb);
+      return () => mobileQuery.removeEventListener('change', cb);
+    },
+    () => mobileQuery.matches,
+  );
+}
+
+/** Phone layout only (hidden by CSS on wider screens): returns from the open channel to the channel list. */
+export function MobileBack() {
+  return (
+    <button className="icon-btn mobile-only" title="Voltar" onClick={() => setState({ mobilePane: 'nav' })}>
+      <ArrowLeft size={22} />
+    </button>
+  );
+}
+
+/**
+ * Touch-and-hold handlers for elements that have a right-click menu: iOS never fires `contextmenu`.
+ * A press that moves (a scroll) is not a hold, and the tap that ends a hold does not also click.
+ */
+export function useLongPress(onLongPress: (x: number, y: number) => void) {
+  const timer = useRef(0);
+  const fired = useRef(false);
+  const start = useRef({ x: 0, y: 0 });
+  return {
+    onTouchStart(e: TouchEvent) {
+      const t = e.touches[0];
+      fired.current = false;
+      start.current = { x: t.clientX, y: t.clientY };
+      timer.current = window.setTimeout(() => {
+        fired.current = true;
+        onLongPress(start.current.x, start.current.y);
+      }, 500);
+    },
+    onTouchMove(e: TouchEvent) {
+      const t = e.touches[0];
+      if (Math.hypot(t.clientX - start.current.x, t.clientY - start.current.y) > 10) clearTimeout(timer.current);
+    },
+    onTouchEnd(e: TouchEvent) {
+      clearTimeout(timer.current);
+      // Swallows the emulated mousedown/click, which would close the menu that just opened.
+      if (fired.current) e.preventDefault();
+    },
+    onClickCapture(e: MouseEvent) {
+      if (!fired.current) return;
+      fired.current = false;
+      e.stopPropagation();
+    },
+  };
+}
+
+/**
+ * A right-hand column the user can widen or narrow by dragging its left edge. The width is remembered
+ * under `storageKey`; double-clicking the edge restores the default.
+ */
+export function ResizablePanel({
+  storageKey,
+  initial = 360,
+  min = 280,
+  max = 760,
+  children,
+}: {
+  storageKey: string;
+  initial?: number;
+  min?: number;
+  max?: number;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  // The width the user chose; what is drawn is capped so the stage beside it keeps STAGE_MIN.
+  const [preferred, setPreferred] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem(storageKey));
+      return saved ? Math.max(min, Math.min(saved, max)) : initial;
+    } catch {
+      return initial;
+    }
+  });
+  const [available, setAvailable] = useState(Infinity);
+  const width = Math.round(Math.max(min, Math.min(preferred, max, available - STAGE_MIN)));
+  const latest = useRef(width);
+  latest.current = width;
+
+  useEffect(() => {
+    const parent = ref.current?.parentElement;
+    if (!parent) return;
+    const ro = new ResizeObserver(() => setAvailable(parent.clientWidth));
+    ro.observe(parent);
+    return () => ro.disconnect();
+  }, []);
+
+  const save = (w: number) => {
+    try {
+      localStorage.setItem(storageKey, String(w));
+    } catch {
+      /* storage unavailable */
+    }
+  };
+
+  function onPointerDown(e: PointerEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = latest.current;
+    document.body.classList.add('col-resizing');
+    const onMove = (ev: globalThis.PointerEvent) => setPreferred(Math.max(min, Math.min(startWidth + startX - ev.clientX, max)));
+    const onUp = () => {
+      document.body.classList.remove('col-resizing');
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      setPreferred(latest.current);
+      save(latest.current);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  return (
+    <div className="resizable-panel" ref={ref} style={{ width }}>
+      <div
+        className="resize-handle"
+        role="separator"
+        aria-orientation="vertical"
+        title="Arraste para redimensionar (duplo clique restaura)"
+        onPointerDown={onPointerDown}
+        onDoubleClick={() => {
+          setPreferred(initial);
+          save(initial);
+        }}
+      />
+      {children}
+    </div>
+  );
+}
+
+const STAGE_MIN = 420;

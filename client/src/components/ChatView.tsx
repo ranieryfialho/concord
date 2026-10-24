@@ -33,6 +33,7 @@ import {
   nameOf,
   openModal,
   selectChannel,
+  setState,
   threadsOf,
   toast,
   toggleMembers,
@@ -41,7 +42,7 @@ import {
 import type { Channel, Message } from '../types';
 import { cx, dayLabel, messageTime, sameDay } from '../utils';
 import { useVoice, voice } from '../voice';
-import { Avatar, GroupIcon, Spinner } from './common';
+import { Avatar, GroupIcon, MobileBack, Spinner, useIsMobile } from './common';
 import { Composer, addFilesToComposer } from './Composer';
 import { Markdown } from './Markdown';
 import { GroupMemberList, MemberList, leaveGroup } from './MemberList';
@@ -466,7 +467,9 @@ export function ChatView({ channel }: { channel: Channel }) {
   const other = useStore((s) => (channel.type === 'dm' ? dmRecipient(s, channel) : undefined));
   const parent = useStore((s) => (channel.type === 'thread' && channel.parent_id ? s.channels[channel.parent_id] : undefined));
   const meId = useStore((s) => s.me?.id);
-  const showMembers = useStore((s) => s.showMembers);
+  const mobile = useIsMobile();
+  // On a phone the member list is a drawer that starts closed, independent of the saved desktop preference.
+  const showMembers = useStore((s) => (mobile ? s.membersDrawer : s.showMembers));
   const inThisCall = useVoice((s) => s.channelId === channel.id);
   const transcriptOpen = useVoice((s) => s.transcriptOpen);
   const [popout, setPopout] = useState<'pins' | 'threads' | null>(null);
@@ -521,6 +524,7 @@ export function ChatView({ channel }: { channel: Channel }) {
   return (
     <div className="chat" onDragEnter={onDragEnter} onDragLeave={onDragLeave} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
       <header className="chat-header">
+        <MobileBack />
         {titleIcon}
         {parent && (
           <>
@@ -581,7 +585,11 @@ export function ChatView({ channel }: { channel: Channel }) {
             <Pin size={20} />
           </button>
           {(channel.guild_id || channel.type === 'group_dm') && (
-            <button className={cx('icon-btn', showMembers && 'active')} title="Lista de membros" onClick={toggleMembers}>
+            <button
+              className={cx('icon-btn', showMembers && 'active')}
+              title="Lista de membros"
+              onClick={mobile ? () => setState({ membersDrawer: !showMembers }) : toggleMembers}
+            >
               <Users size={20} />
             </button>
           )}
@@ -611,6 +619,16 @@ export function ChatView({ channel }: { channel: Channel }) {
           <Composer channel={channel} />
           <TypingIndicator channel={channel} />
         </div>
+        {mobile && sidePanel && (
+          <div
+            className="drawer-backdrop"
+            onClick={() => {
+              setState({ membersDrawer: false });
+              setSearch(null);
+              useVoice.setState({ transcriptOpen: false });
+            }}
+          />
+        )}
         {sidePanel}
       </div>
       {dragging && (

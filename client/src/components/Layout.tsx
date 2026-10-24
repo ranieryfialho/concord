@@ -14,9 +14,12 @@ import { Modals } from './Modals';
 import { ServerRail } from './ServerRail';
 import { UserPanel } from './UserPanel';
 import { VoiceView } from './VoiceView';
+import { useIsMobile } from './common';
 
 export function Layout() {
   const view = useStore((s) => s.view);
+  const mobilePane = useStore((s) => s.mobilePane);
+  const mobile = useIsMobile();
   const channel = useStore((s) => (s.view.channelId ? s.channels[s.view.channelId] : undefined));
   const mentions = useStore(totalMentions);
   const toastMessage = useStore((s) => s.toast);
@@ -56,13 +59,14 @@ export function Layout() {
     );
 
   return (
-    <div className="layout">
+    <div className={`layout pane-${mobilePane}`}>
       <ServerRail />
       <aside className="sidebar">
         {view.guildId === HOME ? <HomeSidebar /> : <GuildSidebar key={view.guildId} guildId={view.guildId} />}
         <UserPanel />
       </aside>
-      <main className="main">{main}</main>
+      {/* Phone: mount the channel only once it is shown, so the composer sizes and focuses against a visible layout. */}
+      <main className="main">{mobile && mobilePane === 'nav' ? null : main}</main>
       <Modals />
       <IncomingCall />
       <ContextMenuHost />

@@ -2191,17 +2191,16 @@ h4 {
 }
 .voice-grid {
   flex: 1;
-  display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  grid-auto-rows: minmax(180px, 1fr);
-  align-content: center;
-  max-height: 100%;
-}
-.voice-grid[data-count='1'] {
-  grid-template-columns: minmax(0, 860px);
+  min-height: 0;
+  display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  grid-auto-rows: minmax(180px, 520px);
+  align-content: center;
+  overflow: hidden;
+}
+/* Width and height come from useGridTileSize (16:9, best fit). */
+.voice-grid > .voice-tile {
+  flex: none;
 }
 .voice-focus {
   flex: 1;
@@ -3327,15 +3326,206 @@ h4 {
     display: none;
   }
 }
+
+.mobile-only,
+.drawer-backdrop {
+  display: none;
+}
+
+/* Phone layout (keep the width in sync with useIsMobile): one pane at a time, the server rail +
+   channel list ("nav") or the open channel ("main"), switched by .layout.pane-*. */
 @media (max-width: 720px) {
-  .sidebar {
-    width: 200px;
+  .app-root {
+    height: 100dvh;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
-  .search-box {
+  .layout,
+  .app-root > .layout:first-child {
+    padding: 0;
+    gap: 0;
+  }
+  .sidebar,
+  .main {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .layout.pane-nav .main,
+  .layout.pane-main .rail,
+  .layout.pane-main .sidebar {
     display: none;
   }
+  .layout.pane-nav .sidebar {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+  .mobile-only {
+    display: inline-flex;
+  }
+
+  .search-box,
+  .chat-topic,
+  .chat-header .header-divider {
+    display: none;
+  }
+  .chat-header {
+    padding: 0 6px;
+    gap: 6px;
+  }
+  .chat-header h3 {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .chat-header-actions {
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .friends .chat-header {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .friends .chat-header > * {
+    flex-shrink: 0;
+  }
+  .icon-btn {
+    padding: 8px;
+  }
+
+  /* Member list, search and transcripts slide over the chat instead of taking a column. */
+  .chat-body {
+    position: relative;
+  }
+  .chat-body > .member-list,
+  .chat-body > .side-panel {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(320px, 85vw);
+    z-index: 30;
+    box-shadow: var(--shadow-lg);
+  }
+  .chat-body > .member-list {
+    display: block;
+  }
+  .drawer-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    background: var(--overlay);
+    z-index: 29;
+  }
+
   .popout {
     width: calc(100vw - 24px);
+  }
+  .emoji-picker {
+    width: min(340px, calc(100vw - 24px));
+  }
+
+  /* iOS zooms the page into any focused field under 16px. */
+  input,
+  textarea,
+  select,
+  [contenteditable] {
+    font-size: 16px;
+  }
+}
+
+.message.tapped {
+  background: var(--bg-message-hover);
+}
+.message.tapped .message-toolbar {
+  display: flex;
+}
+.message.tapped .reaction.add {
+  opacity: 1;
+}
+
+/* Phone, continued: messages, dialogs and the voice room. */
+@media (max-width: 720px) {
+  .message {
+    padding-right: 12px;
+  }
+  /* A tap leaves :hover stuck on the last touched message; only the tapped one shows its toolbar. */
+  .message:hover:not(.tapped) .message-toolbar {
+    display: none;
+  }
+  .message-toolbar {
+    right: 8px;
+  }
+  .voice-tile,
+  .voice-member {
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+
+  .modal {
+    width: calc(100% - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+  .modal-wide {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+    border: none;
+  }
+  .modal-header {
+    padding: 20px 48px 4px;
+  }
+  .modal-body {
+    padding: 12px 16px 20px;
+  }
+  .modal-footer {
+    padding: 12px 16px;
+  }
+  .settings-layout {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .settings-nav {
+    width: auto;
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex-shrink: 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .settings-nav button {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .settings-nav button.danger {
+    margin-top: 0;
+  }
+  .settings-content {
+    padding-right: 0;
+  }
+
+  .voice-stage {
+    padding: 8px 8px 84px;
+  }
+  /* The room's text chat and transcripts take the whole stage. */
+  .voice-body {
+    position: relative;
+  }
+  .voice-body > .resizable-panel {
+    position: absolute;
+    inset: 0;
+    width: auto !important;
+    z-index: 10;
+  }
+  .voice-body > .resizable-panel > .side-panel {
+    border-left: none;
+  }
+  .resize-handle {
+    display: none;
   }
 }
 
@@ -3701,4 +3891,53 @@ h4 {
 }
 .btn.btn-light:hover {
   background: #f1f0ff;
+}
+
+/* ---------- Resizable side column ---------- */
+
+.resizable-panel {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  min-height: 0;
+}
+/* Shown whenever it is open, even on narrow windows where plain side panels are hidden. */
+.resizable-panel > .side-panel {
+  display: flex;
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 6;
+  touch-action: none;
+}
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.12s;
+}
+.resize-handle:hover::after,
+body.col-resizing .resize-handle::after {
+  background: var(--accent);
+}
+/* While dragging, videos and text must not swallow the pointer or get selected. */
+body.col-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+body.col-resizing video,
+body.col-resizing iframe {
+  pointer-events: none;
 }

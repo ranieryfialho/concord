@@ -72,6 +72,10 @@ export interface State {
   view: View;
   lastChannels: Record<string, string>;
   showMembers: boolean;
+  /** Phone layout shows one pane at a time: the server/channel lists or the open channel. */
+  mobilePane: 'nav' | 'main';
+  /** Phone layout: the member list opens as a drawer over the chat instead of a column. */
+  membersDrawer: boolean;
   replyingTo: Record<string, Message | null>;
   editingId: string | null;
   modal: ModalState | null;
@@ -131,6 +135,8 @@ export const useStore = create<State>()(() => ({
   view: saved.view,
   lastChannels: saved.lastChannels,
   showMembers: loadSaved('concord.showMembers', true),
+  mobilePane: 'nav',
+  membersDrawer: false,
 }));
 
 export const getState = useStore.getState;
@@ -386,6 +392,8 @@ export function selectGuild(guildId: string) {
 export function selectChannel(guildId: string, channelId: string | null) {
   setState((s) => ({
     view: { guildId, channelId },
+    mobilePane: 'main',
+    membersDrawer: false,
     lastChannels: channelId ? { ...s.lastChannels, [guildId]: channelId } : { ...s.lastChannels, [guildId]: '' },
     editingId: null,
   }));

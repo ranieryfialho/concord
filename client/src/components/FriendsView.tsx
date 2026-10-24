@@ -5,7 +5,7 @@ import { api } from '../api';
 import { closeModal, nameOf, openDM, openModal, presenceOf, toast, useStore } from '../store';
 import type { RelationshipType } from '../types';
 import { PRESENCE_LABEL, cx } from '../utils';
-import { Avatar } from './common';
+import { Avatar, MobileBack } from './common';
 
 type Tab = 'online' | 'all' | 'pending' | 'add';
 
@@ -124,6 +124,7 @@ export function FriendsView() {
   return (
     <div className="friends">
       <header className="chat-header">
+        <MobileBack />
         <Users size={22} className="muted" />
         <h3>Amigos</h3>
         <span className="header-divider" />

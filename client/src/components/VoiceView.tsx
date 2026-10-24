@@ -25,7 +25,7 @@ import {
   VolumeX,
   X,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { api } from '../api';
 import { P, has } from '../permissions';
@@ -33,13 +33,13 @@ import { channelLabel, closeModal, getState, isUnread, nameOf, openModal, toast,
 import type { Channel, SavedTranscript, TranscriptEntry } from '../types';
 import { cx } from '../utils';
 import { STREAM_QUALITIES, type StreamKind, savePrefs, transcriptionAvailable, useVoice, voice } from '../voice';
-import { Avatar, Spinner } from './common';
+import { Avatar, MobileBack, ResizablePanel, Spinner, useLongPress } from './common';
 import { DeviceMenu } from './DeviceMenu';
 import { onScreenShareClick } from './StreamMenu';
 import { keyLabel } from './PushToTalk';
 import { Composer } from './Composer';
 import { MessageList, TypingIndicator } from './ChatView';
-import { openVoiceUserMenu } from './VoiceUserMenu';
+import { openVoiceUserMenu, openVoiceUserMenuAt } from './VoiceUserMenu';
 
 function VideoEl({ stream, mirror = false, contain = false }: { stream: MediaStream; mirror?: boolean; contain?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -120,7 +120,19 @@ function useFullscreen(ref: React.RefObject<HTMLElement | null>) {
   return [active, toggle] as const;
 }
 
-function TileView({ tile, guildId, focused, onFocus }: { tile: Tile; guildId: string | null; focused: boolean; onFocus: () => void }) {
+function TileView({
+  tile,
+  guildId,
+  focused,
+  onFocus,
+  style,
+}: {
+  tile: Tile;
+  guildId: string | null;
+  focused: boolean;
+  onFocus: () => void;
+  style?: React.CSSProperties;
+}) {
   const name = useStore((s) => nameOf(s, tile.userId, guildId));
   const state = useStore((s) => s.voiceStates[tile.userId]);
   const speaking = useVoice((s) => !!s.speaking[tile.userId]);
@@ -130,6 +142,7 @@ function TileView({ tile, guildId, focused, onFocus }: { tile: Tile; guildId: st
   const streamMuted = useVoice((s) => !!s.streamMuted[tile.userId]);
   const ref = useRef<HTMLDivElement>(null);
   const [fullscreen, toggleFullscreen] = useFullscreen(ref);
+  const longPress = useLongPress((x, y) => openVoiceUserMenuAt(x, y, tile.userId, guildId));
   const stop = (fn: () => void) => (e: React.MouseEvent) => {
     e.stopPropagation();
     fn();
@@ -137,10 +150,12 @@ function TileView({ tile, guildId, focused, onFocus }: { tile: Tile; guildId: st
   return (
     <div
       ref={ref}
+      style={style}
       className={cx('voice-tile', speaking && !isScreen && 'speaking', focused && 'focused', isScreen && 'screen', fullscreen && 'fullscreen')}
       onClick={fullscreen ? undefined : onFocus}
       onDoubleClick={tile.stream ? toggleFullscreen : undefined}
       onContextMenu={(e) => openVoiceUserMenu(e, tile.userId, guildId)}
+      {...longPress}
     >
       {tile.stream ? (
         <VideoEl stream={tile.stream} mirror={!isScreen && tile.userId === meId} contain={isScreen} />
@@ -232,6 +247,36 @@ function setHideNoVideo(hideNoVideo: boolean) {
   savePrefs();
 }
 
+const GRID_GAP = 14;
+
+/**
+ * Discord-style grid: every tile is 16:9, and the column count is whichever makes the tiles largest
+ * in the space available. Re-measured when the stage resizes (window, side panel drag).
+ */
+function useGridTileSize(ref: React.RefObject<HTMLElement | null>, count: number) {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !count) return;
+    const measure = () => {
+      const { width: W, height: H } = el.getBoundingClientRect();
+      let best = 0;
+      for (let cols = 1; cols <= count; cols++) {
+        const rows = Math.ceil(count / cols);
+        const w = Math.min((W - GRID_GAP * (cols - 1)) / cols, ((H - GRID_GAP * (rows - 1)) / rows) * (16 / 9));
+        best = Math.max(best, w);
+      }
+      best = Math.floor(Math.max(best, 0));
+      setSize((s) => (s.width === best ? s : { width: best, height: Math.floor((best * 9) / 16) }));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref, count]);
+  return size;
+}
+
 export function VoiceStage({ channel, compact = false }: { channel: Channel; compact?: boolean }) {
   const allTiles = useTiles(channel.id);
   const hideNoVideo = useVoice((s) => s.hideNoVideo);
@@ -239,6 +284,8 @@ export function VoiceStage({ channel, compact = false }: { channel: Channel; com
   const [focus, setFocus] = useState<string | null>(null);
   const focused = tiles.find((t) => t.key === focus);
   const label = channel.type === 'voice' ? channel.name : 'esta chamada';
+  const gridRef = useRef<HTMLDivElement>(null);
+  const tileSize = useGridTileSize(gridRef, focused ? 0 : tiles.length);
 
   return (
     <div className={cx('voice-stage', focused && 'has-focus', compact && 'compact')}>
@@ -279,9 +326,16 @@ export function VoiceStage({ channel, compact = false }: { channel: Channel; com
         </>
       ) : (
         tiles.length > 0 && (
-          <div className="voice-grid" data-count={Math.min(tiles.length, 9)}>
+          <div className="voice-grid" ref={gridRef} style={{ gap: GRID_GAP }}>
             {tiles.map((t) => (
-              <TileView key={t.key} tile={t} guildId={channel.guild_id} focused={false} onFocus={() => setFocus(t.key)} />
+              <TileView
+                key={t.key}
+                tile={t}
+                guildId={channel.guild_id}
+                focused={false}
+                onFocus={() => setFocus(t.key)}
+                style={tileSize.width ? tileSize : { visibility: 'hidden' }}
+              />
             ))}
           </div>
         )
@@ -658,6 +712,7 @@ export function VoiceView({ channel }: { channel: Channel }) {
   return (
     <div className="voice-view">
       <header className="chat-header voice-header">
+        <MobileBack />
         <Volume2 size={20} className="muted" />
         <h3>{channel.name}</h3>
         <span className="small muted">{count === 1 ? '1 na sala' : `${count} na sala`}</span>
@@ -691,7 +746,11 @@ export function VoiceView({ channel }: { channel: Channel }) {
           <VoiceStage channel={channel} />
           <VoiceControls channel={channel} />
         </div>
-        {transcriptOpen ? <TranscriptPanel channel={channel} /> : chatOpen && <VoiceChatPanel channel={channel} />}
+        {(transcriptOpen || chatOpen) && (
+          <ResizablePanel storageKey="concord.voicePanelWidth">
+            {transcriptOpen ? <TranscriptPanel channel={channel} /> : <VoiceChatPanel channel={channel} />}
+          </ResizablePanel>
+        )}
       </div>
     </div>
   );

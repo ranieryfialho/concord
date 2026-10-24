@@ -12,7 +12,12 @@ import { CheckItem, MenuItem, MenuSep, SubMenu, closeMenu, openMenu } from './Co
 export function openVoiceUserMenu(e: MouseEvent, userId: string, guildId: string | null) {
   e.preventDefault();
   e.stopPropagation();
-  openMenu(e.clientX, e.clientY, <VoiceUserMenu userId={userId} guildId={guildId} />);
+  openVoiceUserMenuAt(e.clientX, e.clientY, userId, guildId);
+}
+
+/** Same menu at viewport coordinates, for a touch-and-hold. */
+export function openVoiceUserMenuAt(x: number, y: number, userId: string, guildId: string | null) {
+  openMenu(x, y, <VoiceUserMenu userId={userId} guildId={guildId} />);
 }
 
 function run(promise: Promise<unknown>, keepOpen = false) {

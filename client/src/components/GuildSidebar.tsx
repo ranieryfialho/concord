@@ -33,8 +33,8 @@ import {
 import type { Channel } from '../types';
 import { cx } from '../utils';
 import { useVoice, voice } from '../voice';
-import { openVoiceUserMenu } from './VoiceUserMenu';
-import { Avatar } from './common';
+import { openVoiceUserMenu, openVoiceUserMenuAt } from './VoiceUserMenu';
+import { Avatar, useLongPress } from './common';
 
 const COLLAPSE_KEY = 'concord.collapsed';
 
@@ -69,11 +69,13 @@ function VoiceMembers({ channel }: { channel: Channel }) {
 
 function VoiceMemberRow(props: { userId: string; guildId: string | null; speaking: boolean; mute: boolean; deaf: boolean; live: boolean }) {
   const name = useStore((s) => nameOf(s, props.userId, props.guildId));
+  const longPress = useLongPress((x, y) => openVoiceUserMenuAt(x, y, props.userId, props.guildId));
   return (
     <div
       className="voice-member"
       onClick={() => openModal({ type: 'profile', userId: props.userId, guildId: props.guildId })}
       onContextMenu={(e) => openVoiceUserMenu(e, props.userId, props.guildId)}
+      {...longPress}
     >
       <Avatar userId={props.userId} size={24} speaking={props.speaking} guildId={props.guildId} />
       <span className="voice-member-name">{name}</span>
