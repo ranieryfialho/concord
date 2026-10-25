@@ -115,6 +115,20 @@ export function ActivityCards({ userId }: { userId: string }) {
   );
 }
 
+/** Small icon of what someone is doing, next to their name in a voice channel. */
+export function ActivityIcon({ userId }: { userId: string }) {
+  const first = useActivities(userId)[0];
+  const [broken, setBroken] = useState(false);
+  // Editors send a file-type tile as the big image; their own icon is the small one.
+  const big = first?.assets?.large_image;
+  const src = big && !big.startsWith('lang:') ? big : first?.assets?.small_image;
+  useEffect(() => setBroken(false), [src]);
+  if (!first) return null;
+  const label = `${ACTIVITY_VERB[first.type] ?? 'Jogando'} ${first.name}`;
+  if (!src || broken) return <Gamepad2 size={14} className="activity-icon muted-icon" aria-label={label} />;
+  return <img className="activity-icon" src={src} alt={label} title={label} draggable={false} onError={() => setBroken(true)} />;
+}
+
 /** One line under a name in the member list: "Jogando Code". */
 export function ActivityLine({ userId }: { userId: string }) {
   const first = useActivities(userId)[0];

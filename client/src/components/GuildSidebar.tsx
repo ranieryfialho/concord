@@ -34,6 +34,7 @@ import type { Channel } from '../types';
 import { cx } from '../utils';
 import { useVoice, voice } from '../voice';
 import { openVoiceUserMenu, openVoiceUserMenuAt } from './VoiceUserMenu';
+import { ActivityIcon } from './Activity';
 import { Avatar, useLongPress } from './common';
 
 const COLLAPSE_KEY = 'concord.collapsed';
@@ -83,6 +84,7 @@ function VoiceMemberRow(props: { userId: string; guildId: string | null; speakin
         <span className="voice-member-name">{name}</span>
         {props.afk && <span className="afk-badge">AFK</span>}
       </span>
+      <ActivityIcon userId={props.userId} />
       {props.live && <span className="live-badge">Ao vivo</span>}
       {props.mute && !props.deaf && <MicOff size={14} className="muted-icon" />}
       {props.deaf && <HeadphoneOff size={14} className="muted-icon" />}
