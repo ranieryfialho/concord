@@ -1,4 +1,5 @@
 import {
+  Coffee,
   Headphones,
   HeadphoneOff,
   Mic,
@@ -134,6 +135,7 @@ export function UserPanel() {
   const name = useStore((s) => (s.me ? nameOf(s, s.me.id) : ''));
   const selfMute = useVoice((s) => s.selfMute);
   const selfDeaf = useVoice((s) => s.selfDeaf);
+  const selfAfk = useVoice((s) => s.selfAfk);
   const speaking = useVoice((s) => (me ? !!s.speaking[me.id] : false));
   const [menu, setMenu] = useState(false);
   if (!me) return null;
@@ -155,6 +157,9 @@ export function UserPanel() {
         </button>
         <button className={cx('icon-btn', selfDeaf && 'danger')} title={selfDeaf ? 'Ativar áudio' : 'Ensurdecer'} onClick={() => voice.setDeaf(!selfDeaf)}>
           {selfDeaf ? <HeadphoneOff size={18} /> : <Headphones size={18} />}
+        </button>
+        <button className={cx('icon-btn', selfAfk && 'warning')} title={selfAfk ? 'Voltar do AFK' : 'Ficar AFK'} onClick={() => voice.setAfk(!selfAfk)}>
+          <Coffee size={18} />
         </button>
         <button className="icon-btn" title="Configurações de usuário" onClick={() => openModal({ type: 'userSettings' })}>
           <Settings size={18} />

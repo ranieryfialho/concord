@@ -22,6 +22,9 @@ interface VoiceUI {
   mode: 'mesh' | 'livekit';
   selfMute: boolean;
   selfDeaf: boolean;
+  /** AFK mutes and deafens; afkRestore remembers what mic/headphones were before, to put them back. */
+  selfAfk: boolean;
+  afkRestore: { mute: boolean; deaf: boolean } | null;
   selfVideo: boolean;
   selfStream: boolean;
   speaking: Record<string, boolean>;
@@ -84,6 +87,8 @@ const PREFS_KEY = 'concord.voice';
 const PREF_KEYS = [
   'selfMute',
   'selfDeaf',
+  'selfAfk',
+  'afkRestore',
   'inputDeviceId',
   'outputDeviceId',
   'videoDeviceId',
@@ -111,6 +116,8 @@ function loadPrefs() {
   const defaults = {
     selfMute: false,
     selfDeaf: false,
+    selfAfk: false,
+    afkRestore: null as VoiceUI['afkRestore'],
     inputDeviceId: '',
     outputDeviceId: '',
     videoDeviceId: '',
@@ -375,8 +382,8 @@ class VoiceManager {
     if (useVoice.getState().channelId !== channelId) return;
     useVoice.setState({ mode: config.mode });
 
-    const { selfMute, selfDeaf } = useVoice.getState();
-    gateway.send('voice_join', { channel_id: channelId, self_mute: selfMute, self_deaf: selfDeaf });
+    const { selfMute, selfDeaf, selfAfk } = useVoice.getState();
+    gateway.send('voice_join', { channel_id: channelId, self_mute: selfMute, self_deaf: selfDeaf, self_afk: selfAfk });
     sounds.join();
 
     if (config.mode === 'livekit') {
@@ -1013,15 +1020,32 @@ class VoiceManager {
     gateway.send('voice_update', {
       self_mute: ui.selfMute,
       self_deaf: ui.selfDeaf,
+      self_afk: ui.selfAfk,
       self_video: ui.selfVideo,
       self_stream: ui.selfStream,
     });
+  }
+
+  setAfk(selfAfk: boolean) {
+    const { selfMute, selfDeaf, afkRestore } = useVoice.getState();
+    if (selfAfk) {
+      useVoice.setState({ selfAfk, afkRestore: { mute: selfMute, deaf: selfDeaf }, selfMute: true, selfDeaf: true });
+    } else {
+      const back = afkRestore ?? { mute: false, deaf: false };
+      useVoice.setState({ selfAfk, afkRestore: null, selfMute: back.mute, selfDeaf: back.deaf });
+    }
+    this.applyGains();
+    void this.applyMicEnabled();
+    (selfAfk ? sounds.mute : sounds.unmute)();
+    savePrefs();
+    this.pushState();
   }
 
   setMute(selfMute: boolean) {
     if (!selfMute && this.suppressed()) toast('Você não tem permissão para falar neste canal');
     const patch: Partial<VoiceUI> = { selfMute };
     if (!selfMute && useVoice.getState().selfDeaf) patch.selfDeaf = false; // unmuting also undeafens, like Discord
+    if (!selfMute) Object.assign(patch, { selfAfk: false, afkRestore: null }); // talking again means back from AFK
     useVoice.setState(patch);
     this.applyGains();
     void this.applyMicEnabled();
@@ -1031,7 +1055,13 @@ class VoiceManager {
   }
 
   setDeaf(selfDeaf: boolean) {
-    useVoice.setState({ selfDeaf });
+    const { selfAfk, afkRestore } = useVoice.getState();
+    if (!selfDeaf && selfAfk) {
+      // Undeafening leaves AFK; the mic goes back to how it was before.
+      useVoice.setState({ selfDeaf, selfAfk: false, afkRestore: null, selfMute: afkRestore?.mute ?? false });
+    } else {
+      useVoice.setState({ selfDeaf });
+    }
     this.applyGains();
     void this.applyMicEnabled();
     (selfDeaf ? sounds.mute : sounds.unmute)();

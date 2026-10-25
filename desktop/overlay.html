@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src https: http: data:" />
+    <title>Concord overlay</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        user-select: none;
+        overflow: hidden;
+      }
+      ul {
+        list-style: none;
+        margin: 0;
+        padding: 6px 0;
+      }
+      li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 34px;
+      }
+      .avatar {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        background: #6d5dfc center / cover no-repeat;
+        color: white;
+        font-size: 11px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 0 2px transparent;
+        opacity: 0.85;
+        transition: box-shadow 0.1s, opacity 0.1s;
+      }
+      .speaking .avatar {
+        box-shadow: 0 0 0 2px #23a55a;
+        opacity: 1;
+      }
+      .name {
+        max-width: 190px;
+        padding: 2px 8px;
+        border-radius: 6px;
+        background: rgba(17, 18, 20, 0.72);
+        color: #dcdee4;
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .speaking .name {
+        color: white;
+      }
+      .icon {
+        width: 14px;
+        height: 14px;
+        color: #f23f43;
+        flex-shrink: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <ul id="list"></ul>
+    <script>
+      const MIC_OFF =
+        '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2 2l20 20M18.9 13.4A7 7 0 0 0 19 12v-2M5 10v2a7 7 0 0 0 12 5M15 9.3V5a3 3 0 0 0-5.7-1.3M9 9v3a3 3 0 0 0 5.1 2.1M12 19v3"/></svg>';
+      const DEAF =
+        '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2 2l20 20M21 14v3a2 2 0 0 1-.6 1.4M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 2.6-6.4M9 3.5A9 9 0 0 1 21 12v1"/></svg>';
+
+      function el(tag, cls, text) {
+        const e = document.createElement(tag);
+        if (cls) e.className = cls;
+        if (text) e.textContent = text;
+        return e;
+      }
+
+      window.render = (members) => {
+        const list = document.getElementById('list');
+        list.replaceChildren(
+          ...members.map((m) => {
+            const li = el('li', m.speaking ? 'speaking' : '');
+            const avatar = el('span', 'avatar', m.avatar ? '' : m.name.slice(0, 2).toUpperCase());
+            if (m.avatar) avatar.style.backgroundImage = `url("${encodeURI(m.avatar)}")`;
+            if (m.color && !m.avatar) avatar.style.backgroundColor = m.color;
+            li.append(avatar, el('span', 'name', m.name));
+            if (m.deaf || m.mute) li.insertAdjacentHTML('beforeend', m.deaf ? DEAF : MIC_OFF);
+            return li;
+          }),
+        );
+      };
+    </script>
+  </body>
+</html>

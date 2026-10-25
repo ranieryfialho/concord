@@ -86,6 +86,7 @@ function VoiceUserMenu({ userId, guildId }: { userId: string; guildId: string | 
   const streamMuted = useVoice((s) => !!s.streamMuted[userId]);
   const selfMute = useVoice((s) => s.selfMute);
   const selfDeaf = useVoice((s) => s.selfDeaf);
+  const selfAfk = useVoice((s) => s.selfAfk);
 
   const isOwnerTarget = useStore((s) => !!guildId && s.guilds[guildId]?.owner_id === userId);
   const outranks = useStore((s) => !!guildId && !!s.me && highestPosition(s, guildId, userId) < highestPosition(s, guildId, s.me.id));
@@ -143,6 +144,7 @@ function VoiceUserMenu({ userId, guildId }: { userId: string; guildId: string | 
         <>
           <CheckItem label="Silenciar" checked={selfMute} onChange={() => voice.setMute(!selfMute)} />
           <CheckItem label="Desativar áudio" checked={selfDeaf} onChange={() => voice.setDeaf(!selfDeaf)} />
+          <CheckItem label="AFK" checked={selfAfk} onChange={() => voice.setAfk(!selfAfk)} />
         </>
       )}
       {!isMe && inMyCall && (

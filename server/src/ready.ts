@@ -10,7 +10,8 @@ import {
   serializeMember,
 } from './models.js';
 import { DM_PERMISSIONS, GuildContext, P, type RoleRow } from './permissions.js';
-import { callPayload, calls, presenceOf, voiceStates } from './realtime.js';
+import type { Activity } from './activities.js';
+import { activitiesOf, callPayload, calls, presenceOf, voiceStates } from './realtime.js';
 import { clientBuild } from './version.js';
 
 export function serializeRole(r: RoleRow) {
@@ -38,8 +39,11 @@ export function guildPayload(guild: GuildRow, userId: string, ctx: GuildContext 
     guild.id,
   );
   const presences: Record<string, string> = {};
+  const activities: Record<string, Activity[]> = {};
   const members = memberRows.map((row) => {
     presences[row.id] = presenceOf(row.id, row.status);
+    const acts = activitiesOf(row.id, row.status);
+    if (acts.length) activities[row.id] = acts;
     return serializeMember(row, row, ctx.memberRoles.get(row.id) ?? []);
   });
 
@@ -50,6 +54,7 @@ export function guildPayload(guild: GuildRow, userId: string, ctx: GuildContext 
     roles: [...ctx.roles.values()].map(serializeRole),
     members,
     presences,
+    activities,
     voice_states: [...voiceStates.values()].filter((s) => s.guild_id === guild.id && visibleIds.has(s.channel_id)),
   };
 }
@@ -81,7 +86,11 @@ export function buildReady(user: UserRow) {
     .map((row) => ({ type: row.rel_type, user: publicUser(row) }));
 
   const presences: Record<string, string> = {};
-  for (const g of guilds) Object.assign(presences, g.presences);
+  const activities: Record<string, Activity[]> = {};
+  for (const g of guilds) {
+    Object.assign(presences, g.presences);
+    Object.assign(activities, g.activities);
+  }
   const others = q.all<{ id: string; status: string }>(
     `SELECT u.id, u.status FROM users u WHERE u.id IN (
        SELECT target_id FROM relationships WHERE user_id = ?
@@ -90,7 +99,11 @@ export function buildReady(user: UserRow) {
     user.id,
     user.id,
   );
-  for (const o of others) presences[o.id] = presenceOf(o.id, o.status);
+  for (const o of others) {
+    presences[o.id] = presenceOf(o.id, o.status);
+    const acts = activitiesOf(o.id, o.status);
+    if (acts.length) activities[o.id] = acts;
+  }
 
   const readStates: Record<string, string> = {};
   for (const r of q.all<{ channel_id: string; last_read_id: string }>(
@@ -131,6 +144,7 @@ export function buildReady(user: UserRow) {
     private_channels: privateChannels,
     relationships,
     presences,
+    activities,
     read_states: readStates,
     mention_counts: mentionCounts,
     voice_states: voice,

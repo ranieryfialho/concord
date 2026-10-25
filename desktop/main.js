@@ -16,17 +16,24 @@ const {
 } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
+const { initUpdater, installUpdate, updateState } = require('./updater');
+const { startGameDetection, runningPrograms } = require('./games');
+const { setOverlayMembers, setOverlayVisible } = require('./overlay');
+const { startRpcServer } = require('./rpc');
 
 // Installed builds talk to production; `npm run desktop` in the repo keeps using the local server.
 const WEBAPP_URL = process.env.CONCORD_URL || (app.isPackaged ? 'https://concord.rafiweb.com.br' : 'http://localhost:3001');
 const WEBAPP_ORIGIN = new URL(WEBAPP_URL).origin;
-const SETTINGS_KEYS = new Set(['MINIMIZE_TO_TRAY', 'START_MINIMIZED']);
+const SETTINGS_KEYS = new Set(['MINIMIZE_TO_TRAY', 'START_MINIMIZED', 'SHARE_ACTIVITY', 'OVERLAY']);
 
 let mainWindow = null;
 let splashWindow = null;
 let tray = null;
 let quitting = false;
 let pendingScreenSource = null;
+let gameActivity = null;
+let rpcActivities = [];
+let games = null;
 
 /** Native Wayland session: screen capture goes through the desktop portal (PipeWire), with its own picker. */
 function waylandCapture() {
@@ -58,9 +65,10 @@ function saveSettings() {
   }, 300);
 }
 
-// ---------- Icons drawn at runtime (no binary assets in the repo) ----------
+// ---------- Icons ----------
+// icon.png (1024px) is the window/tray icon; electron-builder also turns it into the .ico/.icns/Linux sizes.
 
-function circleIcon(size, [r, g, b], letter = false) {
+function circleIcon(size, [r, g, b]) {
   const buf = Buffer.alloc(size * size * 4);
   const c = (size - 1) / 2;
   const radius = size / 2;
@@ -68,24 +76,38 @@ function circleIcon(size, [r, g, b], letter = false) {
     for (let x = 0; x < size; x++) {
       const d = Math.hypot(x - c, y - c);
       const alpha = Math.max(0, Math.min(1, radius - d));
-      let pr = r, pg = g, pb = b;
-      if (letter) {
-        // A ring that reads as a "C" at tray size.
-        const ring = d > size * 0.2 && d < size * 0.33 && !(x > c && Math.abs(y - c) < size * 0.12);
-        if (ring) pr = pg = pb = 255;
-      }
       const i = (y * size + x) * 4;
-      buf[i] = pb; // BGRA
-      buf[i + 1] = pg;
-      buf[i + 2] = pr;
+      buf[i] = b; // BGRA
+      buf[i + 1] = g;
+      buf[i + 2] = r;
       buf[i + 3] = Math.round(alpha * 255);
     }
   }
   return nativeImage.createFromBitmap(buf, { width: size, height: size });
 }
 
-const appIcon = () => circleIcon(64, [109, 93, 252], true);
+let iconCache = null;
+const appIcon = () => (iconCache ??= nativeImage.createFromPath(path.join(__dirname, 'icon.png')));
 const badgeIcon = () => circleIcon(16, [236, 66, 69]);
+
+// ---------- Activity ("Jogando …") and the voice overlay ----------
+
+function currentActivities() {
+  if (settings.SHARE_ACTIVITY === false) return [];
+  return [gameActivity, ...rpcActivities].filter(Boolean);
+}
+
+function pushActivity() {
+  mainWindow?.webContents.send('activity:update', currentActivities());
+  updateOverlay();
+}
+
+// Like Discord's, the overlay is for games: only while one is detected and Concord isn't in front.
+function updateOverlay() {
+  setOverlayVisible(settings.OVERLAY !== false && !!gameActivity && !mainWindow?.isFocused());
+}
+
+const customGames = () => (Array.isArray(settings.GAMES) ? settings.GAMES : []);
 
 // ---------- Windows ----------
 
@@ -184,6 +206,8 @@ function createMainWindow() {
     }
   });
   mainWindow.on('closed', () => (mainWindow = null));
+  mainWindow.on('focus', updateOverlay);
+  mainWindow.on('blur', updateOverlay);
 
   // Links open in the system browser; the window never navigates away from the app.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -206,7 +230,8 @@ function showMain() {
 }
 
 function createTray() {
-  tray = new Tray(appIcon().resize({ width: 16, height: 16 }));
+  const traySize = process.platform === 'linux' ? 24 : 16;
+  tray = new Tray(appIcon().resize({ width: traySize, height: traySize, quality: 'best' }));
   tray.setToolTip('Concord');
   tray.setContextMenu(
     Menu.buildFromTemplate([
@@ -272,7 +297,28 @@ function registerIpc() {
     if (!fromApp(e) || !SETTINGS_KEYS.has(key)) return;
     settings[key] = !!value;
     saveSettings();
+    if (key === 'SHARE_ACTIVITY' || key === 'OVERLAY') pushActivity();
   });
+
+  ipcMain.handle('activity:get', (e) => (fromApp(e) ? currentActivities() : []));
+  ipcMain.handle('activity:running', (e) => (fromApp(e) ? runningPrograms() : []));
+  ipcMain.handle('games:list', (e) => (fromApp(e) ? customGames() : []));
+  ipcMain.handle('games:add', (e, game) => {
+    if (!fromApp(e)) return;
+    const exe = String(game?.exe ?? '').trim().toLowerCase().slice(0, 128);
+    const name = String(game?.name ?? '').trim().slice(0, 128);
+    if (!exe || !name) return;
+    settings.GAMES = [...customGames().filter((g) => g.exe !== exe), { exe, name }];
+    saveSettings();
+    games?.rescan();
+  });
+  ipcMain.handle('games:remove', (e, exe) => {
+    if (!fromApp(e)) return;
+    settings.GAMES = customGames().filter((g) => g.exe !== String(exe));
+    saveSettings();
+    games?.rescan();
+  });
+  ipcMain.on('overlay:update', (e, members) => fromApp(e) && setOverlayMembers(members));
 
   ipcMain.handle('screen:sources', async (e) => {
     // On Wayland every getSources() opens the system's own screen picker: skip ours (an empty list tells the
@@ -284,6 +330,9 @@ function registerIpc() {
   ipcMain.on('screen:select', (e, id) => {
     if (fromApp(e)) pendingScreenSource = String(id);
   });
+
+  ipcMain.handle('update:state', (e) => (fromApp(e) ? updateState() : null));
+  ipcMain.on('update:install', (e) => fromApp(e) && installUpdate());
 }
 
 function configureSession() {
@@ -314,7 +363,8 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', showMain);
-  app.setAppUserModelId('app.concord.desktop');
+  // Must equal build.appId: the NSIS shortcut carries it, and a mismatch makes the taskbar fall back to the exe icon.
+  app.setAppUserModelId('br.com.rafiweb.concord');
 
   app.whenReady().then(() => {
     loadSettings();
@@ -323,6 +373,15 @@ if (!app.requestSingleInstanceLock()) {
     createSplash();
     createMainWindow();
     createTray();
+    initUpdater({ origin: WEBAPP_ORIGIN, onState: (s) => mainWindow?.webContents.send('update:state', s) });
+    games = startGameDetection(customGames, (activity) => {
+      gameActivity = activity;
+      pushActivity();
+    });
+    startRpcServer((activities) => {
+      rpcActivities = activities;
+      pushActivity();
+    });
   });
 
   app.on('before-quit', () => (quitting = true));

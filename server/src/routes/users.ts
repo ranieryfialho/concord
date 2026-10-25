@@ -5,7 +5,7 @@ import { q, tx } from '../db.js';
 import { type ChannelRow, type UserRow, getUser, privateUser, publicUser } from '../models.js';
 import { limits } from '../ratelimit.js';
 import { privateChannelPayload } from '../ready.js';
-import { broadcastPresence, dispatch, presenceAudience, presenceOf } from '../realtime.js';
+import { activitiesOf, broadcastPresence, dispatch, presenceAudience, presenceOf } from '../realtime.js';
 import { publicUrl, removeUpload, uploadImage } from '../uploads.js';
 import { HttpError, optionalText, snowflake, text } from '../util.js';
 
@@ -32,7 +32,7 @@ export function sharePresences(userIds: string[]) {
     dispatch(
       userIds.filter((x) => x !== id),
       'PRESENCE_UPDATE',
-      { user_id: id, status: presenceOf(id, u.status) },
+      { user_id: id, status: presenceOf(id, u.status), activities: activitiesOf(id, u.status) },
     );
   }
 }
@@ -174,7 +174,11 @@ function notifyRelationship(a: UserRow, b: UserRow) {
     const rel = q.get<{ type: string }>('SELECT type FROM relationships WHERE user_id = ? AND target_id = ?', self.id, other.id);
     if (rel) {
       dispatch([self.id], 'RELATIONSHIP_ADD', relationshipPayload(rel.type, other));
-      dispatch([self.id], 'PRESENCE_UPDATE', { user_id: other.id, status: presenceOf(other.id, other.status) });
+      dispatch([self.id], 'PRESENCE_UPDATE', {
+        user_id: other.id,
+        status: presenceOf(other.id, other.status),
+        activities: activitiesOf(other.id, other.status),
+      });
     } else {
       dispatch([self.id], 'RELATIONSHIP_REMOVE', { id: other.id });
     }

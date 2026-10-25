@@ -5,11 +5,13 @@ import { colorHex } from '../permissions';
 import { closeModal, hoistedRole, memberColor, nameOf, openModal, presenceOf, toast, useStore } from '../store';
 import type { Channel } from '../types';
 import { cx } from '../utils';
+import { ActivityLine } from './Activity';
 import { Avatar } from './common';
 
 function MemberRow({ userId, guildId, offline, isOwner }: { userId: string; guildId: string | null; offline: boolean; isOwner: boolean }) {
   const name = useStore((s) => nameOf(s, userId, guildId));
   const custom = useStore((s) => s.users[userId]?.custom_status);
+  const activity = useStore((s) => !!s.activities[userId]?.length);
   const color = useStore((s) => memberColor(s, guildId, userId));
   return (
     <div className={cx('member-row', offline && 'offline')} onClick={() => openModal({ type: 'profile', userId, guildId })}>
@@ -19,7 +21,7 @@ function MemberRow({ userId, guildId, offline, isOwner }: { userId: string; guil
           {name}
           {isOwner && <Crown size={13} className="role-icon owner" />}
         </span>
-        {custom && !offline && <span className="truncate small muted">{custom}</span>}
+        {!offline && (activity ? <ActivityLine userId={userId} /> : custom && <span className="truncate small muted">{custom}</span>)}
       </div>
     </div>
   );

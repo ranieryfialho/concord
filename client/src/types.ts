@@ -119,6 +119,7 @@ export interface VoiceState {
   channel_id: string | null;
   self_mute: boolean;
   self_deaf: boolean;
+  self_afk: boolean;
   self_video: boolean;
   self_stream: boolean;
   /** Muted by a moderator (MUTE_MEMBERS). */
@@ -160,11 +161,24 @@ export interface Call {
   ringing: string[];
 }
 
+/** What someone is doing ("Jogando Code"): games and Rich Presence apps, reported by the desktop app. */
+export interface Activity {
+  /** 0 playing, 2 listening, 3 watching, 5 competing. */
+  type: number;
+  name: string;
+  details?: string;
+  state?: string;
+  application_id?: string;
+  timestamps?: { start?: number; end?: number };
+  assets?: { large_image?: string; large_text?: string; small_image?: string; small_text?: string };
+}
+
 export interface ApiGuild extends Guild {
   channels: ApiChannel[];
   roles: Role[];
   members: ApiMember[];
   presences: Record<string, Presence>;
+  activities?: Record<string, Activity[]>;
   voice_states: VoiceState[];
 }
 
@@ -174,6 +188,7 @@ export interface ReadyPayload {
   private_channels: ApiChannel[];
   relationships: { type: RelationshipType; user: User }[];
   presences: Record<string, Presence>;
+  activities?: Record<string, Activity[]>;
   read_states: Record<string, string>;
   mention_counts: Record<string, number>;
   voice_states: VoiceState[];

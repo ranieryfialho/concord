@@ -30,4 +30,22 @@ contextBridge.exposeInMainWorld('ConcordNative', {
     get: (key) => ipcRenderer.invoke('settings:get', String(key)),
     set: (key, value) => ipcRenderer.invoke('settings:set', String(key), value),
   },
+  activity: {
+    get: () => ipcRenderer.invoke('activity:get'),
+    onChange: (cb) => subscribe('activity:update', cb),
+    runningPrograms: () => ipcRenderer.invoke('activity:running'),
+    games: {
+      list: () => ipcRenderer.invoke('games:list'),
+      add: (game) => ipcRenderer.invoke('games:add', { exe: String(game.exe), name: String(game.name) }),
+      remove: (exe) => ipcRenderer.invoke('games:remove', String(exe)),
+    },
+  },
+  overlay: {
+    update: (members) => ipcRenderer.send('overlay:update', members),
+  },
+  updates: {
+    getState: () => ipcRenderer.invoke('update:state'),
+    onState: (cb) => subscribe('update:state', cb),
+    install: () => ipcRenderer.send('update:install'),
+  },
 });

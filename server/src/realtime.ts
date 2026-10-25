@@ -2,12 +2,15 @@ import { WebSocket } from 'ws';
 import { q } from './db.js';
 import { type ChannelRow, getMessage } from './models.js';
 import { channelAudience, getChannel, recipientIds } from './permissions.js';
+import type { Activity } from './activities.js';
 import { snowflake } from './util.js';
 
 export interface Conn {
   ws: WebSocket;
   userId: string;
   alive: boolean;
+  /** Reported by this connection (the desktop app); see activities.ts. */
+  activities?: Activity[];
 }
 
 export interface VoiceState {
@@ -16,6 +19,8 @@ export interface VoiceState {
   channel_id: string;
   self_mute: boolean;
   self_deaf: boolean;
+  /** Away from keyboard: shown as a tag; the client also mutes and deafens itself. */
+  self_afk: boolean;
   self_video: boolean;
   self_stream: boolean;
   /** A moderator muted this member (MUTE_MEMBERS). Cleared when they leave the channel. */
@@ -49,6 +54,12 @@ export function presenceOf(userId: string, status: string): string {
   return status;
 }
 
+/** Everything the user's connections report, hidden while they appear offline. */
+export function activitiesOf(userId: string, status: string): Activity[] {
+  if (presenceOf(userId, status) === 'offline') return [];
+  return [...(connections.get(userId) ?? [])].flatMap((c) => c.activities ?? []).slice(0, 3);
+}
+
 /** Everyone who should see this user's presence: guild co-members, relationships and DM partners. */
 export function presenceAudience(userId: string): string[] {
   return q
@@ -69,6 +80,7 @@ export function broadcastPresence(userId: string) {
   dispatch([...presenceAudience(userId), userId], 'PRESENCE_UPDATE', {
     user_id: userId,
     status: presenceOf(userId, user.status),
+    activities: activitiesOf(userId, user.status),
   });
 }
 

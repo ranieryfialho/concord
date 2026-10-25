@@ -8,6 +8,8 @@ import express, { Router } from 'express';
 export const DOWNLOADS_DIR = path.resolve(process.env.DOWNLOADS_DIR ?? '/downloads');
 
 const FILE = /^Concord-(\d+\.\d+\.\d+)-(win|mac|linux)-(x64|arm64|x86_64|amd64)\.(exe|dmg|AppImage|deb)$/;
+// Feed files the desktop app's updater reads (electron-updater "generic" provider): latest*.yml and blockmaps.
+const UPDATE_FEED = /^(latest(-mac|-linux)?\.yml|Concord-\d+\.\d+\.\d+-(win|mac|linux)-(x64|arm64|x86_64|amd64)\.(exe|dmg|AppImage|deb)\.blockmap)$/;
 const OS_LABEL = { win: 'Windows', mac: 'macOS', linux: 'Linux' } as const;
 const OS_ORDER = ['win', 'mac', 'linux'] as const;
 const ARCH_LABEL = { x64: 'Intel / 64-bit', x86_64: '64-bit', amd64: '64-bit (Debian/Ubuntu)', arm64: 'Apple Silicon / ARM64' } as const;
@@ -88,15 +90,28 @@ downloadsRouter.get('/download', (_req, res) => {
   res.type('html').send(page(latestBuilds()));
 });
 
-// Only files matching the installer naming scheme are served.
+/** Newest installers, for the desktop updater on macOS and for old desktop builds without an updater. */
+downloadsRouter.get('/api/desktop/latest', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.json({
+    builds: latestBuilds().map((b) => ({ name: b.name, version: b.version, os: b.os, arch: b.arch, ext: b.ext, url: `/downloads/${encodeURIComponent(b.name)}` })),
+  });
+});
+
+// Only installers and update-feed files are served.
 downloadsRouter.use(
   '/downloads',
-  (req, res, next) => (FILE.test(decodeURIComponent(req.path.slice(1))) ? next() : res.status(404).end()),
+  (req, res, next) => {
+    const name = decodeURIComponent(req.path.slice(1));
+    return FILE.test(name) || UPDATE_FEED.test(name) ? next() : res.status(404).end();
+  },
   express.static(DOWNLOADS_DIR, {
     index: false,
-    setHeaders(res) {
+    setHeaders(res, filePath) {
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Content-Disposition', 'attachment');
+      if (filePath.endsWith('.yml')) res.setHeader('Cache-Control', 'no-cache'); // updaters must see a new release at once
     },
   }),
+  (_req, res) => res.status(404).end(), // missing file: not the web app's index.html
 );

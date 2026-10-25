@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { api } from './api';
 import { P, has } from './permissions';
 import type {
+  Activity,
   ApiChannel,
   ApiGuild,
   ApiMember,
@@ -41,7 +42,7 @@ export type ModalState =
   | { type: 'createChannel'; guildId: string; parentId: string | null; channelType: 'text' | 'voice' | 'category' }
   | { type: 'channelSettings'; channelId: string }
   | { type: 'invite'; guildId: string }
-  | { type: 'userSettings'; tab?: 'account' | 'appearance' | 'voice' | 'app' }
+  | { type: 'userSettings'; tab?: 'account' | 'appearance' | 'voice' | 'activity' | 'app' }
   | { type: 'guildSettings'; guildId: string }
   | { type: 'profile'; userId: string; guildId: string | null }
   | { type: 'screenPicker'; replace?: boolean }
@@ -61,6 +62,7 @@ export interface State {
   members: Record<string, Record<string, Member>>;
   roles: Record<string, Record<string, Role>>;
   presences: Record<string, Presence>;
+  activities: Record<string, Activity[]>;
   relationships: Record<string, RelationshipType>;
   messages: Record<string, MessageBucket>;
   readStates: Record<string, string>;
@@ -116,6 +118,7 @@ const initialData = {
   members: {},
   roles: {},
   presences: {},
+  activities: {},
   relationships: {},
   messages: {},
   readStates: {},
@@ -164,6 +167,7 @@ interface Draft {
   members: Record<string, Record<string, Member>>;
   roles: Record<string, Record<string, Role>>;
   presences: Record<string, Presence>;
+  activities: Record<string, Activity[]>;
   voiceStates: Record<string, VoiceState>;
 }
 
@@ -185,6 +189,7 @@ export function ingestGuild(draft: Draft, g: ApiGuild) {
   draft.members[g.id] = members;
   draft.roles[g.id] = Object.fromEntries(g.roles.map((r) => [r.id, r]));
   Object.assign(draft.presences, g.presences);
+  Object.assign(draft.activities, g.activities);
   for (const v of g.voice_states) if (v.channel_id) draft.voiceStates[v.user_id] = v;
 }
 
@@ -198,6 +203,7 @@ export function addGuild(g: ApiGuild) {
       members: { ...s.members },
       roles: { ...s.roles },
       presences: { ...s.presences },
+      activities: { ...s.activities },
       voiceStates: Object.fromEntries(Object.entries(s.voiceStates).filter(([, v]) => v.guild_id !== g.id)),
     };
     ingestGuild(draft, g);
@@ -208,7 +214,7 @@ export function addGuild(g: ApiGuild) {
 }
 
 export function applyReady(d: ReadyPayload) {
-  const draft: Draft = { users: {}, guilds: {}, channels: {}, members: {}, roles: {}, presences: {}, voiceStates: {} };
+  const draft: Draft = { users: {}, guilds: {}, channels: {}, members: {}, roles: {}, presences: {}, activities: {}, voiceStates: {} };
   for (const g of d.guilds) ingestGuild(draft, g);
   for (const c of d.private_channels) {
     draft.channels[c.id] = toChannel(c);
@@ -221,6 +227,7 @@ export function applyReady(d: ReadyPayload) {
   }
   draft.users[d.user.id] = d.user;
   Object.assign(draft.presences, d.presences);
+  Object.assign(draft.activities, d.activities);
   for (const v of d.voice_states) if (v.channel_id) draft.voiceStates[v.user_id] = v;
 
   const s = getState();

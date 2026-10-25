@@ -1,7 +1,7 @@
 {
   "name": "@concord/desktop",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Concord desktop shell",
   "main": "main.js",
   "scripts": {
@@ -20,10 +20,23 @@
     "directories": {
       "output": "dist"
     },
+    "icon": "icon.png",
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://concord.rafiweb.com.br/downloads"
+      }
+    ],
     "files": [
       "main.js",
       "preload.js",
+      "updater.js",
+      "games.js",
+      "rpc.js",
+      "overlay.js",
+      "overlay.html",
       "splash.html",
+      "icon.png",
       "package.json"
     ],
     "win": {
@@ -73,5 +86,8 @@
       "executableName": "concord"
     }
   },
-  "homepage": "https://concord.rafiweb.com.br"
+  "homepage": "https://concord.rafiweb.com.br",
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  }
 }

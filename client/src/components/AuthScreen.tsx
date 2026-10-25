@@ -67,7 +67,7 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (token: strin
     return (
       <div className="auth-screen">
         <div className="auth-card">
-          <div className="brand-mark big">C</div>
+          <img className="brand-mark big" src="/icon.png" alt="Concord" draggable={false} />
           <h1>Guarde seu código de recuperação</h1>
           <p className="muted">
             Se você esquecer a senha, este código é a única forma de recuperar a conta. Ele aparece só desta vez: anote em um lugar seguro.
@@ -90,7 +90,7 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (token: strin
   return (
     <div className="auth-screen">
       <form className="auth-card" onSubmit={submit}>
-        <div className="brand-mark big">C</div>
+        <img className="brand-mark big" src="/icon.png" alt="Concord" draggable={false} />
         <h1>{titles[mode][0]}</h1>
         <p className="muted">{titles[mode][1]}</p>
 

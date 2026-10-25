@@ -217,6 +217,9 @@ h4 {
 .icon-btn.danger {
   color: var(--red);
 }
+.icon-btn.warning {
+  color: var(--yellow);
+}
 .icon-btn:disabled {
   opacity: 0.4;
 }
@@ -297,20 +300,12 @@ h4 {
 .brand-mark {
   width: 44px;
   height: 44px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #8b7dff, #5a48e8);
-  color: white;
-  font-weight: 800;
-  font-size: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  object-fit: contain;
 }
 .brand-mark.big {
   width: 64px;
   height: 64px;
-  border-radius: 20px;
-  font-size: 32px;
 }
 
 .spinner {
@@ -576,9 +571,6 @@ h4 {
   border: none;
   background: transparent;
 }
-.rail-button.home .brand-mark {
-  border-radius: inherit;
-}
 .rail-button.add {
   color: var(--green);
   border-style: dashed;
@@ -828,8 +820,14 @@ h4 {
   background: var(--bg-hover);
   color: var(--text);
 }
-.voice-member-name {
+.voice-member-label {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.voice-member-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -846,6 +844,18 @@ h4 {
   border-radius: 8px;
   padding: 1px 7px;
   letter-spacing: 0.01em;
+}
+
+.afk-badge {
+  flex-shrink: 0;
+  background: var(--yellow);
+  color: #1b1c20;
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 4px;
+  padding: 0 5px;
+  line-height: 15px;
+  letter-spacing: 0.04em;
 }
 
 .thread-rows {
@@ -2359,6 +2369,10 @@ h4 {
   color: var(--red);
   background: var(--red-soft);
 }
+.control-btn.afk {
+  color: #1b1c20;
+  background: var(--yellow);
+}
 .control-btn.on {
   background: var(--inverse);
   color: var(--inverse-text);
@@ -3251,6 +3265,78 @@ h4 {
   margin-top: 16px;
 }
 
+/* ---------- Activity ("Jogando …") ---------- */
+
+.activity-card {
+  margin-top: 12px;
+  padding: 10px 12px 12px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+.activity-card h4 {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+}
+.activity-body {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+.activity-art {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.activity-art > img:first-child {
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  object-fit: cover;
+}
+.activity-small {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 3px solid var(--bg-elevated);
+  background: var(--bg-elevated);
+}
+.activity-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.activity-text strong {
+  font-size: 14px;
+}
+.activity-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  color: var(--green);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.activity-line strong {
+  font-weight: 700;
+}
+
 .source-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -3950,4 +4036,32 @@ body.col-resizing {
 body.col-resizing video,
 body.col-resizing iframe {
   pointer-events: none;
+}
+
+/* ---------- Settings → Atividade ---------- */
+
+.game-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.game-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.game-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.game-add select,
+.game-add input {
+  flex: 1 1 220px;
+  min-width: 0;
 }

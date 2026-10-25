@@ -60,6 +60,7 @@ function VoiceMembers({ channel }: { channel: Channel }) {
           speaking={!!speaking[v.user_id]}
           mute={v.self_mute || v.suppress}
           deaf={v.self_deaf}
+          afk={v.self_afk}
           live={v.self_stream}
         />
       ))}
@@ -67,7 +68,7 @@ function VoiceMembers({ channel }: { channel: Channel }) {
   );
 }
 
-function VoiceMemberRow(props: { userId: string; guildId: string | null; speaking: boolean; mute: boolean; deaf: boolean; live: boolean }) {
+function VoiceMemberRow(props: { userId: string; guildId: string | null; speaking: boolean; mute: boolean; deaf: boolean; afk: boolean; live: boolean }) {
   const name = useStore((s) => nameOf(s, props.userId, props.guildId));
   const longPress = useLongPress((x, y) => openVoiceUserMenuAt(x, y, props.userId, props.guildId));
   return (
@@ -78,7 +79,10 @@ function VoiceMemberRow(props: { userId: string; guildId: string | null; speakin
       {...longPress}
     >
       <Avatar userId={props.userId} size={24} speaking={props.speaking} guildId={props.guildId} />
-      <span className="voice-member-name">{name}</span>
+      <span className="voice-member-label">
+        <span className="voice-member-name">{name}</span>
+        {props.afk && <span className="afk-badge">AFK</span>}
+      </span>
       {props.live && <span className="live-badge">Ao vivo</span>}
       {props.mute && !props.deaf && <MicOff size={14} className="muted-icon" />}
       {props.deaf && <HeadphoneOff size={14} className="muted-icon" />}

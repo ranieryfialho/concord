@@ -36,7 +36,7 @@ export function ServerRail() {
       <div className={cx('rail-item', homeActive && 'active')}>
         <span className="rail-pill" />
         <button className="rail-button home" onClick={() => selectGuild(HOME)} title="Mensagens diretas">
-          <span className="brand-mark">C</span>
+          <img className="brand-mark" src="/icon.png" alt="" draggable={false} />
         </button>
         <Badge count={dmMentions + pending} />
       </div>

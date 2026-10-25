@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   Captions,
   ChevronUp,
+  Coffee,
   Download,
   Eye,
   EyeOff,
@@ -173,6 +174,7 @@ function TileView({
           <MicOff size={13} />
         ) : null}
         <span className="truncate">{isScreen ? `Tela de ${name}` : name}</span>
+        {!isScreen && state?.self_afk && <span className="afk-badge">AFK</span>}
       </div>
       {isScreen && <span className="live-badge tile-live">Ao vivo</span>}
       <div className="voice-tile-actions">
@@ -362,6 +364,7 @@ export function VoiceControls({ channel, floating = true }: { channel: Channel; 
   const connected = useVoice((s) => s.channelId === channel.id);
   const selfMute = useVoice((s) => s.selfMute);
   const selfDeaf = useVoice((s) => s.selfDeaf);
+  const selfAfk = useVoice((s) => s.selfAfk);
   const selfVideo = useVoice((s) => s.selfVideo);
   const selfStream = useVoice((s) => s.selfStream);
   const transcriptOpen = useVoice((s) => s.transcriptOpen);
@@ -409,6 +412,9 @@ export function VoiceControls({ channel, floating = true }: { channel: Channel; 
       </ControlWithMenu>
       <button className={cx('control-btn', selfDeaf && 'off')} title={selfDeaf ? 'Ativar áudio' : 'Ensurdecer'} onClick={() => voice.setDeaf(!selfDeaf)}>
         {selfDeaf ? <HeadphoneOff size={19} /> : <Headphones size={19} />}
+      </button>
+      <button className={cx('control-btn', selfAfk && 'afk')} title={selfAfk ? 'Voltar do AFK' : 'Ficar AFK'} onClick={() => voice.setAfk(!selfAfk)}>
+        <Coffee size={19} />
       </button>
       {canStream && (
         <>

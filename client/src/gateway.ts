@@ -26,6 +26,7 @@ import {
   updateMessage,
 } from './store';
 import type {
+  Activity,
   ApiChannel,
   ApiGuild,
   ApiMember,
@@ -94,6 +95,7 @@ const handlers: Record<string, Handler> = {
   READY: (d: ReadyPayload) => {
     applyReady(d);
     voice.onReady();
+    void native?.activity?.get().then((activities) => gateway.send('activity_update', { activities })); // the new session starts empty
     serverBuild(d.client_build);
   },
 
@@ -105,8 +107,11 @@ const handlers: Record<string, Handler> = {
     if (me?.id === u.id) setState({ me: { ...me, ...u } });
   },
 
-  PRESENCE_UPDATE: (d: { user_id: string; status: Presence }) =>
-    setState((s) => ({ presences: { ...s.presences, [d.user_id]: d.status } })),
+  PRESENCE_UPDATE: (d: { user_id: string; status: Presence; activities?: Activity[] }) =>
+    setState((s) => ({
+      presences: { ...s.presences, [d.user_id]: d.status },
+      activities: { ...s.activities, [d.user_id]: d.activities ?? [] },
+    })),
 
   GUILD_CREATE: (g: ApiGuild) => addGuild(g),
 

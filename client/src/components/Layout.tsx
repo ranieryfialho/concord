@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
+import { initActivity } from '../activity';
 import { openChannel } from '../gateway';
 import { native } from '../native';
 import { HOME, ackChannel, getState, totalMentions, useStore } from '../store';
+import { initDesktopUpdates } from '../update';
 import { ChatView } from './ChatView';
 import { ContextMenuHost } from './ContextMenu';
 import { PushToTalkListener } from './PushToTalk';
@@ -32,6 +34,8 @@ export function Layout() {
   }, [mentions, channel, guildName]);
 
   useEffect(() => native?.onNotificationClick((id) => openChannel(id)), []);
+  useEffect(initDesktopUpdates, []);
+  useEffect(initActivity, []);
 
   useEffect(() => {
     const onFocus = () => {

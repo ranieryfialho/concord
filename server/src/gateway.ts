@@ -1,5 +1,6 @@
 import type http from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
+import { sanitizeActivities } from './activities.js';
 import { userFromToken } from './auth.js';
 import { P, channelPermissions, getChannel, has } from './permissions.js';
 import { Limiter } from './ratelimit.js';
@@ -49,6 +50,7 @@ function handleOp(conn: Conn, msg: ClientMessage) {
         channel_id: channel.id,
         self_mute: !!d.self_mute,
         self_deaf: !!d.self_deaf,
+        self_afk: !!d.self_afk,
         self_video: false,
         self_stream: false,
         server_mute: false,
@@ -73,6 +75,7 @@ function handleOp(conn: Conn, msg: ClientMessage) {
         ...state,
         self_mute: bool('self_mute', state.self_mute),
         self_deaf: bool('self_deaf', state.self_deaf),
+        self_afk: bool('self_afk', state.self_afk),
         self_video: canStream && bool('self_video', state.self_video),
         self_stream: canStream && bool('self_stream', state.self_stream),
       });
@@ -88,6 +91,14 @@ function handleOp(conn: Conn, msg: ClientMessage) {
       if (voiceConns.get(conn.userId) !== conn) return;
       const target = voiceConns.get(to);
       if (target) send(target, 'VOICE_SIGNAL', { from: conn.userId, data: d.data });
+      return;
+    }
+
+    case 'activity_update': {
+      const next = sanitizeActivities(d.activities);
+      if (JSON.stringify(next) === JSON.stringify(conn.activities ?? [])) return;
+      conn.activities = next;
+      broadcastPresence(conn.userId);
       return;
     }
 
@@ -164,6 +175,8 @@ export function attachGateway(server: http.Server) {
       if (set && set.size === 0) {
         connections.delete(conn.userId);
         broadcastPresence(conn.userId);
+      } else if (conn.activities?.length) {
+        broadcastPresence(conn.userId); // the desktop app closed while the browser stays open
       }
     });
   });

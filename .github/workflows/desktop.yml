@@ -1,7 +1,8 @@
 name: Build do app desktop
 
 # Gera os instaladores (Windows, macOS, Linux) e publica na VPS, de onde a página
-# /download do Concord os serve. O repositório é privado, então não usamos GitHub Releases.
+# /download do Concord os serve. Os latest*.yml e .blockmap vão junto: são o feed do
+# atualizador automático do app (desktop/updater.js). O repositório é privado, então não usamos GitHub Releases.
 #   Nova versão: suba "version" em desktop/package.json, depois
 #   git tag desktop-v0.2.0 && git push --tags      (ou Actions > Run workflow)
 on:
@@ -20,13 +21,19 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifacts: "desktop/dist/*.exe"
+            artifacts: |
+              desktop/dist/*.exe
+              desktop/dist/*.exe.blockmap
+              desktop/dist/latest.yml
           - os: macos-latest
-            artifacts: "desktop/dist/*.dmg"
+            artifacts: |
+              desktop/dist/*.dmg
+              desktop/dist/*.dmg.blockmap
           - os: ubuntu-latest
             artifacts: |
               desktop/dist/*.AppImage
               desktop/dist/*.deb
+              desktop/dist/latest-linux.yml
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read

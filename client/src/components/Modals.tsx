@@ -37,6 +37,8 @@ import { keyLabel } from './PushToTalk';
 import { MicMeter, useMicReader, useMicTest } from './MicMeter';
 import { inviteLink } from '../invite';
 import { Avatar, GuildIcon, Modal, Spinner } from './common';
+import { ActivityCards } from './Activity';
+import { ActivitySettings } from './ActivitySettings';
 
 function useBusy() {
   const [busy, setBusy] = useState(false);
@@ -971,6 +973,7 @@ function ProfileModal({ userId, guildId }: { userId: string; guildId: string | n
           </h2>
           <p className="muted">{user?.username}</p>
           {user?.custom_status && <p className="profile-custom">{user.custom_status}</p>}
+          <ActivityCards userId={userId} />
           <div className="profile-section">
             <h4>Status</h4>
             <p>{PRESENCE_LABEL[presence]}</p>
@@ -1046,9 +1049,11 @@ function ProfileModal({ userId, guildId }: { userId: string; guildId: string | n
   );
 }
 
-function UserSettingsModal({ initialTab }: { initialTab?: 'account' | 'appearance' | 'voice' | 'app' }) {
+type UserSettingsTab = 'account' | 'appearance' | 'voice' | 'activity' | 'app';
+
+function UserSettingsModal({ initialTab }: { initialTab?: UserSettingsTab }) {
   const me = useStore((s) => s.me)!;
-  const [tab, setTab] = useState<'account' | 'appearance' | 'voice' | 'app'>(initialTab ?? 'account');
+  const [tab, setTab] = useState<UserSettingsTab>(initialTab ?? 'account');
   return (
     <Modal wide title="Configurações de usuário" onClose={closeModal}>
       <div className="settings-layout">
@@ -1062,6 +1067,11 @@ function UserSettingsModal({ initialTab }: { initialTab?: 'account' | 'appearanc
           <button className={cx(tab === 'voice' && 'active')} onClick={() => setTab('voice')}>
             Voz e vídeo
           </button>
+          {native?.activity && (
+            <button className={cx(tab === 'activity' && 'active')} onClick={() => setTab('activity')}>
+              Atividade
+            </button>
+          )}
           <button className={cx(tab === 'app' && 'active')} onClick={() => setTab('app')}>
             Aplicativo
           </button>
@@ -1079,6 +1089,7 @@ function UserSettingsModal({ initialTab }: { initialTab?: 'account' | 'appearanc
           {tab === 'account' && <AccountSettings me={me} />}
           {tab === 'appearance' && <AppearanceSettings />}
           {tab === 'voice' && <VoiceSettings />}
+          {tab === 'activity' && <ActivitySettings />}
           {tab === 'app' && <AppSettings />}
         </div>
       </div>
