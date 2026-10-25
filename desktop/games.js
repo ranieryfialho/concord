@@ -169,15 +169,20 @@ function parseEditorTitle(title, appName) {
   return /\.\w+$/.test(parts[0]) ? { file: parts[0] } : { workspace: parts[0] };
 }
 
-async function editorActivity(editor, proc, since) {
+async function editorActivity(editor, proc, since, icon) {
   const titles = await windowTitles(proc);
   const info = titles.map((t) => parseEditorTitle(t, editor.name)).find(Boolean) ?? {};
+  // Like the Rich Presence plugins: the file's language as the big image, the editor in the corner.
+  const ext = /\.([a-z0-9]{1,10})$/i.exec(info.file ?? '')?.[1]?.toLowerCase();
   return {
     type: 0,
     name: editor.name,
-    details: info.file ? `Editando ${info.file}` : undefined,
-    state: info.workspace ? `Workspace: ${info.workspace}` : undefined,
+    details: info.workspace ? `No ${info.workspace}` : undefined,
+    state: info.file ? `Editando ${info.file}` : undefined,
     timestamps: { start: since },
+    assets: ext
+      ? { large_image: `lang:${ext}`, large_text: info.file, small_image: icon, small_text: editor.name }
+      : { large_image: icon, large_text: editor.name },
   };
 }
 
@@ -215,8 +220,7 @@ function startGameDetection(getCustom, onChange) {
       return;
     }
     if (editor?.exe !== hit.exe) editor = { exe: hit.exe, since: Date.now(), icon: await iconOf(hit), json: '' };
-    const activity = await editorActivity(def, hit, editor.since);
-    if (editor.icon) activity.assets = { large_image: editor.icon };
+    const activity = await editorActivity(def, hit, editor.since, editor.icon);
     const json = JSON.stringify(activity);
     if (json !== editor.json) {
       editor.json = json;

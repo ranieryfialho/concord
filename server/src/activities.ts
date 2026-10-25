@@ -27,6 +27,7 @@ function str(v: unknown, max: number): string | undefined {
 function image(v: unknown): string | undefined {
   if (typeof v !== 'string') return undefined;
   if (/^https:\/\/[^\s"'<>]+$/.test(v) && v.length <= 512) return v;
+  if (/^lang:[a-z0-9]{1,10}$/.test(v)) return v; // drawn by the client: a file-type tile ("TS")
   if (/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v) && v.length <= MAX_DATA_IMAGE) return v;
   return undefined;
 }

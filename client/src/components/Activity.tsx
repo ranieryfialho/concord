@@ -34,10 +34,56 @@ function Elapsed({ start, end }: { start?: number; end?: number }) {
   );
 }
 
+// "lang:ts" images (code editors, see desktop/games.js): a tile with the file type, in its usual color.
+const LANG: Record<string, [string, string, string?]> = {
+  ts: ['TS', '#3178c6'],
+  tsx: ['TSX', '#3178c6'],
+  mts: ['TS', '#3178c6'],
+  js: ['JS', '#f0db4f', '#1b1c20'],
+  jsx: ['JSX', '#f0db4f', '#1b1c20'],
+  mjs: ['JS', '#f0db4f', '#1b1c20'],
+  cjs: ['JS', '#f0db4f', '#1b1c20'],
+  py: ['PY', '#3776ab'],
+  json: ['{ }', '#5b5f6a'],
+  md: ['MD', '#4b5563'],
+  css: ['CSS', '#663399'],
+  scss: ['SCSS', '#c6538c'],
+  html: ['HTML', '#e34f26'],
+  vue: ['VUE', '#41b883'],
+  svelte: ['SV', '#ff3e00'],
+  go: ['GO', '#00add8'],
+  rs: ['RS', '#b7410e'],
+  java: ['JAVA', '#e76f00'],
+  kt: ['KT', '#7f52ff'],
+  cs: ['C#', '#239120'],
+  c: ['C', '#5c6bc0'],
+  h: ['H', '#5c6bc0'],
+  cpp: ['C++', '#00599c'],
+  php: ['PHP', '#777bb4'],
+  rb: ['RB', '#cc342d'],
+  swift: ['SW', '#f05138'],
+  dart: ['DART', '#0175c2'],
+  sh: ['SH', '#2e3440'],
+  ps1: ['PS', '#012456'],
+  sql: ['SQL', '#e38c00'],
+  yml: ['YML', '#cb171e'],
+  yaml: ['YML', '#cb171e'],
+};
+
+function LangTile({ ext }: { ext: string }) {
+  const [label, bg, fg = 'white'] = LANG[ext] ?? [ext.slice(0, 4).toUpperCase(), '#4b5563'];
+  return (
+    <span className="lang-tile" style={{ background: bg, color: fg, fontSize: label.length > 2 ? 15 : 22 }}>
+      {label}
+    </span>
+  );
+}
+
 /** An app's image, falling back to a gamepad when the URL doesn't load. */
 function Art({ src, title }: { src?: string; title?: string }) {
   const [broken, setBroken] = useState(false);
   useEffect(() => setBroken(false), [src]);
+  if (src?.startsWith('lang:')) return <LangTile ext={src.slice(5)} />;
   if (!src || broken) return <Gamepad2 size={32} />;
   return <img src={src} alt="" title={title} draggable={false} onError={() => setBroken(true)} />;
 }
@@ -53,7 +99,7 @@ export function ActivityCards({ userId }: { userId: string }) {
           <h4>{ACTIVITY_VERB[a.type] ?? 'Jogando'}</h4>
           <div className="activity-body">
             <div className="activity-art" title={a.assets?.large_text}>
-              <Art src={a.assets?.large_image} />
+              <Art src={a.assets?.large_image} title={a.assets?.large_text} />
               {a.assets?.small_image && <img className="activity-small" src={a.assets.small_image} alt="" title={a.assets.small_text} draggable={false} />}
             </div>
             <div className="activity-text">

@@ -1069,7 +1069,15 @@ h4 {
 .status-menu {
   bottom: 58px;
   left: 0;
-  width: 230px;
+  width: 280px;
+}
+.status-menu-activity:has(.activity-card) {
+  padding: 0 4px 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.status-menu-activity .activity-card:first-child {
+  margin-top: 4px;
 }
 
 .voice-connection {
@@ -3303,6 +3311,18 @@ h4 {
   height: 100%;
   border-radius: 10px;
   object-fit: cover;
+}
+.lang-tile {
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 0 8px 6px 0;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-family: 'Segoe UI', system-ui, sans-serif;
 }
 .activity-small {
   position: absolute;

@@ -12,7 +12,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const FIRST_CHECK_MS = 10_000;
-const CHECK_EVERY_MS = 4 * 60 * 60_000;
+const CHECK_EVERY_MS = 30 * 60_000;
 
 /** idle → downloading → ready; "manual" when it can't update itself and the user must use /download. */
 let state = { status: 'idle', current: app.getVersion(), version: null, percent: 0 };

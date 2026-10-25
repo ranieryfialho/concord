@@ -23,6 +23,7 @@ import { HOME, channelLabel, nameOf, openModal, selectChannel, setState, toast, 
 import type { UserStatus } from '../types';
 import { PRESENCE_LABEL, cx } from '../utils';
 import { useVoice, voice } from '../voice';
+import { ActivityCards } from './Activity';
 import { Avatar, StatusDot } from './common';
 import { NoiseButton } from './NoisePopover';
 import { onScreenShareClick } from './StreamMenu';
@@ -85,6 +86,7 @@ const STATUSES: UserStatus[] = ['online', 'idle', 'dnd', 'invisible'];
 function StatusMenu({ onClose }: { onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const theme = useTheme((s) => s.resolved);
+  const meId = useStore((s) => s.me?.id);
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) onClose();
@@ -105,6 +107,11 @@ function StatusMenu({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="dropdown status-menu" ref={ref}>
+      {meId && (
+        <div className="status-menu-activity">
+          <ActivityCards userId={meId} />
+        </div>
+      )}
       {STATUSES.map((s) => (
         <button key={s} className="dropdown-item" onClick={() => void setStatus(s)}>
           <span className="row gap-8">
