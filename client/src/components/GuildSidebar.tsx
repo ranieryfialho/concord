@@ -31,11 +31,11 @@ import {
   useStore,
 } from '../store';
 import type { Channel } from '../types';
-import { cx } from '../utils';
+import { cx, formatDuration } from '../utils';
 import { useVoice, voice } from '../voice';
 import { openVoiceUserMenu, openVoiceUserMenuAt } from './VoiceUserMenu';
 import { ActivityIcon } from './Activity';
-import { Avatar, useLongPress } from './common';
+import { Avatar, useLongPress, useNow } from './common';
 
 const COLLAPSE_KEY = 'concord.collapsed';
 
@@ -67,6 +67,24 @@ function VoiceMembers({ channel }: { channel: Channel }) {
       ))}
     </div>
   );
+}
+
+/** How long the conversation in a voice channel has been going ("12:34"), while someone is in it. */
+function CallTimer({ channelId, connected }: { channelId: string; connected: boolean }) {
+  const startedAt = useStore((s) => {
+    let t: number | undefined;
+    for (const v of Object.values(s.voiceStates)) {
+      if (v.channel_id === channelId && v.channel_started_at && (t === undefined || v.channel_started_at < t)) t = v.channel_started_at;
+    }
+    return t;
+  });
+  if (!startedAt) return null;
+  return <Ticker since={startedAt} className={cx('call-timer', connected && 'connected')} />;
+}
+
+function Ticker({ since, className }: { since: number; className?: string }) {
+  const now = useNow();
+  return <span className={className}>{formatDuration(now - since)}</span>;
 }
 
 function VoiceMemberRow(props: { userId: string; guildId: string | null; speaking: boolean; mute: boolean; deaf: boolean; afk: boolean; live: boolean }) {
@@ -145,6 +163,7 @@ function ChannelRow({ channel }: { channel: Channel }) {
         {unread && !active && <span className="unread-pill" />}
         <Icon size={18} className="channel-icon" />
         <span className="channel-name">{channel.name}</span>
+        {channel.type === 'voice' && <CallTimer channelId={channel.id} connected={connected} />}
         <span className="channel-actions">
           {canInvite && (
             <button

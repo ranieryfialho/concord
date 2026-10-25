@@ -160,6 +160,16 @@ export function MobileBack() {
  * Touch-and-hold handlers for elements that have a right-click menu: iOS never fires `contextmenu`.
  * A press that moves (a scroll) is not a hold, and the tap that ends a hold does not also click.
  */
+/** The current time, re-rendering every second while mounted (timers). */
+export function useNow(): number {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
+}
+
 export function useLongPress(onLongPress: (x: number, y: number) => void) {
   const timer = useRef(0);
   const fired = useRef(false);

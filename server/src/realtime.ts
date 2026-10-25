@@ -29,10 +29,20 @@ export interface VoiceState {
   server_deaf: boolean;
   /** Cannot transmit audio: lacks SPEAK or is server-muted. */
   suppress: boolean;
+  /** When the conversation in this channel began: the first person joined an empty channel. */
+  channel_started_at: number;
 }
 
 export const connections = new Map<string, Set<Conn>>();
 export const voiceStates = new Map<string, VoiceState>();
+// channel id -> when the current conversation there started (cleared when the channel empties).
+const channelStarts = new Map<string, number>();
+
+export function channelStartedAt(channelId: string): number {
+  let t = channelStarts.get(channelId);
+  if (t === undefined) channelStarts.set(channelId, (t = Date.now()));
+  return t;
+}
 // The single connection (device) that owns a user's voice session.
 export const voiceConns = new Map<string, Conn>();
 
@@ -107,7 +117,10 @@ export function leaveVoice(userId: string) {
   // Also notify the leaving user: they may have just lost access to the channel.
   dispatch([...voiceAudience(state.channel_id), userId], 'VOICE_STATE_UPDATE', { ...state, channel_id: null });
   endCallIfEmpty(state.channel_id);
-  if (!usersInVoiceChannel(state.channel_id).length) for (const hook of channelEmptyHooks) hook(state.channel_id);
+  if (!usersInVoiceChannel(state.channel_id).length) {
+    channelStarts.delete(state.channel_id);
+    for (const hook of channelEmptyHooks) hook(state.channel_id);
+  }
 }
 
 export function leaveVoiceWhere(predicate: (s: VoiceState) => boolean) {

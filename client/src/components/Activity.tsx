@@ -4,6 +4,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { ACTIVITY_VERB } from '../activity';
 import { useStore } from '../store';
 import type { Activity } from '../types';
+import { formatDuration } from '../utils';
+import { useNow } from './common';
 
 const NONE: Activity[] = [];
 
@@ -11,25 +13,13 @@ export function useActivities(userId: string): Activity[] {
   return useStore(useShallow((s) => (s.presences[userId] && s.presences[userId] !== 'offline' ? (s.activities[userId] ?? NONE) : NONE)));
 }
 
-function clock(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = String(total % 60).padStart(2, '0');
-  return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
-}
-
 function Elapsed({ start, end }: { start?: number; end?: number }) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  if (end) return <span className="activity-time">restam {clock(end - now)}</span>;
+  const now = useNow();
+  if (end) return <span className="activity-time">restam {formatDuration(end - now)}</span>;
   if (!start) return null;
   return (
     <span className="activity-time">
-      <Gamepad2 size={14} /> {clock(now - start)}
+      <Gamepad2 size={14} /> {formatDuration(now - start)}
     </span>
   );
 }

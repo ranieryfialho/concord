@@ -3,6 +3,7 @@ import { HOME, dmChannels, guildMentions, guildUnread, openModal, selectGuild, u
 import { native } from '../native';
 import { cx } from '../utils';
 import { GuildIcon } from './common';
+import { AppInfoButton } from './AppInfo';
 
 function Badge({ count }: { count: number }) {
   if (!count) return null;
@@ -56,6 +57,8 @@ export function ServerRail() {
           </a>
         </div>
       )}
+      <div className="rail-spacer" />
+      <AppInfoButton />
     </nav>
   );
 }

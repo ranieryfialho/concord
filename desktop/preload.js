@@ -47,5 +47,6 @@ contextBridge.exposeInMainWorld('ConcordNative', {
     getState: () => ipcRenderer.invoke('update:state'),
     onState: (cb) => subscribe('update:state', cb),
     install: () => ipcRenderer.send('update:install'),
+    check: () => ipcRenderer.send('update:check'),
   },
 });

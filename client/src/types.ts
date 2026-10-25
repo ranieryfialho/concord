@@ -126,6 +126,8 @@ export interface VoiceState {
   server_mute: boolean;
   server_deaf: boolean;
   suppress: boolean;
+  /** When the conversation in this channel began (absent from servers before this field). */
+  channel_started_at?: number;
 }
 
 export interface TranscriptEntry {

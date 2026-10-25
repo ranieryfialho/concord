@@ -48,6 +48,8 @@ export interface ConcordNative {
     getState(): Promise<DesktopUpdateState | null>;
     onState(cb: (state: DesktopUpdateState) => void): () => void;
     install(): void;
+    /** Desktop 0.1.5+. */
+    check?(): void;
   };
 }
 

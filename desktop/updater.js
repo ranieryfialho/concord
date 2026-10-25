@@ -18,6 +18,7 @@ const CHECK_EVERY_MS = 30 * 60_000;
 let state = { status: 'idle', current: app.getVersion(), version: null, percent: 0 };
 let notify = () => {};
 let installFn = null;
+let checkNow = () => {};
 
 function set(patch) {
   const wasReady = state.status === 'ready';
@@ -124,6 +125,7 @@ function initUpdater({ origin, onState }) {
   const tick = () => {
     if (state.status === 'idle') void check();
   };
+  checkNow = tick;
   setTimeout(tick, FIRST_CHECK_MS);
   setInterval(tick, CHECK_EVERY_MS);
 }
@@ -132,4 +134,5 @@ module.exports = {
   initUpdater,
   updateState: () => state,
   installUpdate: () => installFn?.(),
+  checkForUpdate: () => checkNow(),
 };

@@ -8,6 +8,7 @@ import { buildReady } from './ready.js';
 import {
   type Conn,
   broadcastPresence,
+  channelStartedAt,
   connections,
   declineCall,
   leaveVoice,
@@ -56,6 +57,7 @@ function handleOp(conn: Conn, msg: ClientMessage) {
         server_mute: false,
         server_deaf: false,
         suppress: !has(perms, P.SPEAK),
+        channel_started_at: channelStartedAt(channel.id),
       });
       if (isPrivate) onPrivateVoiceJoin(channel, conn.userId);
       return;

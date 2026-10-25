@@ -16,7 +16,7 @@ const {
 } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
-const { initUpdater, installUpdate, updateState } = require('./updater');
+const { checkForUpdate, initUpdater, installUpdate, updateState } = require('./updater');
 const { startGameDetection, runningPrograms } = require('./games');
 const { setOverlayMembers, setOverlayVisible } = require('./overlay');
 const { startRpcServer } = require('./rpc');
@@ -336,6 +336,7 @@ function registerIpc() {
 
   ipcMain.handle('update:state', (e) => (fromApp(e) ? updateState() : null));
   ipcMain.on('update:install', (e) => fromApp(e) && installUpdate());
+  ipcMain.on('update:check', (e) => fromApp(e) && checkForUpdate());
 }
 
 function configureSession() {
