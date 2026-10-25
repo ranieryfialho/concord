@@ -32,7 +32,8 @@ interface VoiceUI {
   streamKinds: Record<string, Record<string, StreamKind>>;
   connection: Record<string, RTCPeerConnectionState>;
   localCamera: MediaStream | null;
-  localScreen: MediaStream | null;
+  /** Our screen shares, up to MAX_SCREENS: the first carries the chosen quality and the computer audio. */
+  localScreens: MediaStream[];
   inputDeviceId: string;
   outputDeviceId: string;
   videoDeviceId: string;
@@ -82,6 +83,10 @@ export const STREAM_QUALITIES: Record<StreamQuality, { label: string; short: str
   '1080p60': { label: '1080p · 60 FPS', short: '1080p 60FPS', width: 1920, height: 1080, fps: 60, bitrate: 7_000_000 },
   source: { label: 'Resolução original · 30 FPS', short: 'Original 30FPS', fps: 30, bitrate: 8_000_000 },
 };
+
+/** Screens one person can share at once; the extra one goes at EXTRA_SCREEN_QUALITY, without audio. */
+export const MAX_SCREENS = 2;
+const EXTRA_SCREEN_QUALITY: StreamQuality = '720p30';
 
 const PREFS_KEY = 'concord.voice';
 const PREF_KEYS = [
@@ -158,7 +163,7 @@ export const useVoice = create<VoiceUI>()(() => ({
   streamKinds: {},
   connection: {},
   localCamera: null,
-  localScreen: null,
+  localScreens: [],
   deviceTick: 0,
   transcriptOpen: false,
   // On a phone the room chat would cover the whole stage, so it starts closed there.
@@ -338,6 +343,10 @@ const LK_STATE: Record<string, RTCPeerConnectionState> = {
 class VoiceManager {
   // mesh
   private peers = new Map<string, Peer>();
+  /** Screens shared beyond the first (capped quality, no audio). */
+  private extraScreens = new WeakSet<MediaStream>();
+  /** stream id -> desktop picker source id, so the picker hides what is already shared. */
+  private screenSources = new Map<string, string>();
   private mic: MediaStream | null = null;
   private iceServers: RTCIceServer[] = FALLBACK_CONFIG.ice_servers;
   // livekit
@@ -475,7 +484,9 @@ class VoiceManager {
     for (const { el } of this.lkAudio.values()) el.remove();
     this.lkAudio.clear();
     ui.localCamera?.getTracks().forEach((t) => t.stop());
-    ui.localScreen?.getTracks().forEach((t) => t.stop());
+    for (const screen of ui.localScreens) screen.getTracks().forEach((t) => t.stop());
+    this.extraScreens = new WeakSet();
+    this.screenSources.clear();
     for (const stop of this.analysers.values()) stop();
     this.analysers.clear();
     this.awaitingJoin = null;
@@ -491,7 +502,7 @@ class VoiceManager {
       streamKinds: {},
       connection: {},
       localCamera: null,
-      localScreen: null,
+      localScreens: [],
     });
   }
 
@@ -571,10 +582,10 @@ class VoiceManager {
       useVoice.setState({ speaking: Object.fromEntries(speakers.map((p) => [p.identity, true])) });
     });
     room.on(RoomEvent.LocalTrackUnpublished, (pub) => {
-      if (pub.source === Track.Source.ScreenShare && useVoice.getState().selfStream) {
-        useVoice.setState({ localScreen: null, selfStream: false });
-        this.pushState();
-      }
+      // Ended outside our controls (e.g. the system's "stop sharing"): forget that screen.
+      if (pub.source !== Track.Source.ScreenShare) return;
+      const gone = useVoice.getState().localScreens.find((x) => x.getVideoTracks()[0] === pub.track?.mediaStreamTrack);
+      if (gone) this.forgetScreen(gone);
     });
     room.on(RoomEvent.ConnectionStateChanged, (state) => {
       useVoice.setState({ connection: { livekit: LK_STATE[state] } });
@@ -711,7 +722,7 @@ class VoiceManager {
     const out: [MediaStream, StreamKind][] = [];
     if (this.mic) out.push([this.mic, 'audio']);
     if (ui.localCamera) out.push([ui.localCamera, 'camera']);
-    if (ui.localScreen) out.push([ui.localScreen, 'screen']);
+    for (const screen of ui.localScreens) out.push([screen, 'screen']);
     return out;
   }
 
@@ -761,7 +772,7 @@ class VoiceManager {
 
     this.sendMeta(uid);
     this.addLocalTracks(peer);
-    if (useVoice.getState().localScreen) setTimeout(() => this.tuneScreenSenders(), 1500);
+    if (useVoice.getState().localScreens.length) setTimeout(() => this.tuneScreenSenders(), 1500);
     return peer;
   }
 
@@ -1104,11 +1115,11 @@ class VoiceManager {
    * Measured in Electron 44 on Windows: our own tone drops from -71 dB to silence while other apps'
    * audio is still captured.
    */
-  private async captureScreen(): Promise<MediaStream | null> {
+  private async captureScreen(extra: boolean): Promise<MediaStream | null> {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({
-        video: this.screenConstraints(),
+        video: this.screenConstraints(extra),
         audio: {
           restrictOwnAudio: true,
           // Voice processing ruins music and game audio.
@@ -1120,6 +1131,14 @@ class VoiceManager {
       } as DisplayMediaStreamOptions);
     } catch {
       return null; // user cancelled the picker
+    }
+    if (extra) {
+      // The computer's audio is one for the whole system: it goes with the first screen only.
+      for (const t of stream.getAudioTracks()) {
+        stream.removeTrack(t);
+        t.stop();
+      }
+      this.extraScreens.add(stream);
     }
     const audio = stream.getAudioTracks()[0];
     const surface = (stream.getVideoTracks()[0]?.getSettings() as MediaTrackSettings & { displaySurface?: string }).displaySurface;
@@ -1134,9 +1153,14 @@ class VoiceManager {
     return stream;
   }
 
+  /** The chosen quality for the main screen; extra screens are capped so two shares don't choke the upload. */
+  private screenQuality(extra: boolean) {
+    return STREAM_QUALITIES[extra ? EXTRA_SCREEN_QUALITY : useVoice.getState().streamQuality];
+  }
+
   /** Resolution / frame-rate caps for the chosen quality. */
-  private screenConstraints(): MediaTrackConstraints {
-    const q = STREAM_QUALITIES[useVoice.getState().streamQuality];
+  private screenConstraints(extra: boolean): MediaTrackConstraints {
+    const q = this.screenQuality(extra);
     return {
       frameRate: { ideal: q.fps, max: q.fps },
       ...(q.width ? { width: { max: q.width }, height: { max: q.height } } : {}),
@@ -1144,19 +1168,19 @@ class VoiceManager {
   }
 
   private applyScreenSettings(stream: MediaStream) {
-    const { streamQuality, streamAudio } = useVoice.getState();
+    const { streamAudio } = useVoice.getState();
     const video = stream.getVideoTracks()[0];
     // "detail" keeps text sharp (code, documents); "motion" keeps 60 FPS smooth (games, video).
-    if (video) video.contentHint = STREAM_QUALITIES[streamQuality].fps >= 60 ? 'motion' : 'detail';
+    if (video) video.contentHint = this.screenQuality(this.extraScreens.has(stream)).fps >= 60 ? 'motion' : 'detail';
     for (const t of stream.getAudioTracks()) t.enabled = streamAudio;
   }
 
-  /** Senders currently carrying our screen video (one per peer, or LiveKit's single one). */
-  private screenSenders(): RTCRtpSender[] {
-    const video = useVoice.getState().localScreen?.getVideoTracks()[0];
+  /** Senders carrying one screen's video (one per peer, or LiveKit's single one). */
+  private screenSenders(stream: MediaStream): RTCRtpSender[] {
+    const video = stream.getVideoTracks()[0];
     if (!video) return [];
     if (this.room) {
-      const pub = this.room.localParticipant.getTrackPublication(livekit!.Track.Source.ScreenShare);
+      const pub = [...this.room.localParticipant.trackPublications.values()].find((p) => p.track?.mediaStreamTrack === video);
       const sender = pub?.track?.sender;
       return sender ? [sender] : [];
     }
@@ -1165,25 +1189,29 @@ class VoiceManager {
 
   /** Bitrate / frame-rate caps on the encoder; encodings exist once negotiation has run. */
   private tuneScreenSenders() {
-    const q = STREAM_QUALITIES[useVoice.getState().streamQuality];
-    for (const sender of this.screenSenders()) {
-      const params = sender.getParameters();
-      if (!params.encodings?.length) continue;
-      params.encodings[0].maxBitrate = q.bitrate;
-      params.encodings[0].maxFramerate = q.fps;
-      void sender.setParameters(params).catch(() => {});
+    for (const stream of useVoice.getState().localScreens) {
+      const q = this.screenQuality(this.extraScreens.has(stream));
+      for (const sender of this.screenSenders(stream)) {
+        const params = sender.getParameters();
+        if (!params.encodings?.length) continue;
+        params.encodings[0].maxBitrate = q.bitrate;
+        params.encodings[0].maxFramerate = q.fps;
+        void sender.setParameters(params).catch(() => {});
+      }
     }
   }
 
   private async publishScreen(stream: MediaStream) {
     if (this.room) {
       const { Track } = livekit!;
-      const q = STREAM_QUALITIES[useVoice.getState().streamQuality];
+      const extra = this.extraScreens.has(stream);
+      const q = this.screenQuality(extra);
       const [video] = stream.getVideoTracks();
       const [audio] = stream.getAudioTracks();
+      // A second track with the same source is allowed; the name tells them apart.
       await this.room.localParticipant.publishTrack(video, {
         source: Track.Source.ScreenShare,
-        name: 'screen',
+        name: extra ? 'screen-2' : 'screen',
         screenShareEncoding: { maxBitrate: q.bitrate, maxFramerate: q.fps },
       });
       if (audio) await this.room.localParticipant.publishTrack(audio, { source: Track.Source.ScreenShareAudio, name: 'screen-audio' });
@@ -1201,77 +1229,107 @@ class VoiceManager {
     }
   }
 
-  async startScreenShare() {
+  /** Adds a screen share (up to MAX_SCREENS). `sourceId` is the desktop picker's choice, to hide it next time. */
+  async startScreenShare(sourceId?: string) {
     const ui = useVoice.getState();
-    if (!ui.channelId || ui.localScreen) return;
-    const stream = await this.captureScreen();
+    if (!ui.channelId) return;
+    if (ui.localScreens.length >= MAX_SCREENS) {
+      toast(`Dá para transmitir até ${MAX_SCREENS} telas ao mesmo tempo`);
+      return;
+    }
+    const extra = ui.localScreens.length > 0;
+    const stream = await this.captureScreen(extra);
     if (!stream || useVoice.getState().channelId !== ui.channelId) {
       stream?.getTracks().forEach((t) => t.stop());
       return;
     }
-    stream.getVideoTracks()[0]?.addEventListener('ended', () => this.stopScreenShare());
-    useVoice.setState({ localScreen: stream, selfStream: true });
+    if (sourceId) this.screenSources.set(stream.id, sourceId);
+    stream.getVideoTracks()[0]?.addEventListener('ended', () => this.stopScreenShare(stream));
+    useVoice.setState((s) => ({ localScreens: [...s.localScreens, stream], selfStream: true }));
     try {
       await this.publishScreen(stream);
     } catch {
       stream.getTracks().forEach((t) => t.stop());
-      useVoice.setState({ localScreen: null, selfStream: false });
+      this.forgetScreen(stream);
       toast('Não foi possível iniciar a transmissão');
       return;
     }
     this.pushState();
+    if (extra) toast(`Segunda tela em ${STREAM_QUALITIES[EXTRA_SCREEN_QUALITY].short} e sem áudio, para não pesar a sua internet`);
   }
 
   /** "Alterar a transmissão": picks another screen/window and swaps it in without ending the stream. */
-  async replaceScreenShare() {
+  async replaceScreenShare(target?: MediaStream, sourceId?: string) {
     const ui = useVoice.getState();
-    if (!ui.localScreen) return this.startScreenShare();
-    const next = await this.captureScreen();
-    const old = useVoice.getState().localScreen;
-    if (!next || !old || useVoice.getState().channelId !== ui.channelId) {
+    const old = target ?? ui.localScreens[0];
+    if (!old) return this.startScreenShare(sourceId);
+    const next = await this.captureScreen(this.extraScreens.has(old));
+    const state = useVoice.getState();
+    if (!next || !state.localScreens.includes(old) || state.channelId !== ui.channelId) {
       next?.getTracks().forEach((t) => t.stop());
       return;
     }
     this.unpublishScreen(old); // stopping tracks ourselves doesn't fire "ended", so the share goes on
-    next.getVideoTracks()[0]?.addEventListener('ended', () => this.stopScreenShare());
-    useVoice.setState({ localScreen: next });
+    this.screenSources.delete(old.id);
+    if (sourceId) this.screenSources.set(next.id, sourceId);
+    next.getVideoTracks()[0]?.addEventListener('ended', () => this.stopScreenShare(next));
+    useVoice.setState((s) => ({ localScreens: s.localScreens.map((x) => (x === old ? next : x)) }));
     try {
       await this.publishScreen(next);
     } catch {
-      this.stopScreenShare();
+      this.stopScreenShare(next);
       toast('Não foi possível trocar a transmissão');
     }
   }
 
-  stopScreenShare() {
-    const { localScreen } = useVoice.getState();
-    if (!localScreen) return;
-    this.unpublishScreen(localScreen);
-    useVoice.setState({ localScreen: null, selfStream: false });
+  /** Stops one screen, or all of them. */
+  stopScreenShare(target?: MediaStream) {
+    const targets = target ? [target] : useVoice.getState().localScreens;
+    for (const stream of targets) {
+      if (!useVoice.getState().localScreens.includes(stream)) continue;
+      this.unpublishScreen(stream);
+      this.forgetScreen(stream);
+    }
+  }
+
+  private forgetScreen(stream: MediaStream) {
+    this.screenSources.delete(stream.id);
+    const remaining = useVoice.getState().localScreens.filter((x) => x !== stream);
+    useVoice.setState({ localScreens: remaining, selfStream: remaining.length > 0 });
     this.sendMeta();
     this.pushState();
+  }
+
+  /** Desktop picker ids of the screens/windows being shared, hidden from the picker. */
+  sharedSourceIds(): string[] {
+    return [...this.screenSources.values()];
+  }
+
+  /** The screen that follows the quality and audio settings (an extra one is fixed at 720p, no audio). */
+  private mainScreen(): MediaStream | undefined {
+    return useVoice.getState().localScreens.find((x) => !this.extraScreens.has(x));
   }
 
   async setStreamQuality(quality: StreamQuality) {
     useVoice.setState({ streamQuality: quality });
     savePrefs();
-    const { localScreen } = useVoice.getState();
-    const video = localScreen?.getVideoTracks()[0];
-    if (!localScreen || !video) return;
-    this.applyScreenSettings(localScreen);
-    await video.applyConstraints(this.screenConstraints()).catch(() => toast('Esta fonte não aceita essa qualidade'));
+    const screen = this.mainScreen();
+    const video = screen?.getVideoTracks()[0];
+    if (!screen || !video) return;
+    this.applyScreenSettings(screen);
+    await video.applyConstraints(this.screenConstraints(false)).catch(() => toast('Esta fonte não aceita essa qualidade'));
     this.tuneScreenSenders();
   }
 
   setStreamAudio(enabled: boolean) {
     useVoice.setState({ streamAudio: enabled });
     savePrefs();
-    const { localScreen } = useVoice.getState();
-    if (!localScreen) return;
-    if (enabled && !localScreen.getAudioTracks().length) {
+    const screen = this.mainScreen();
+    if (!screen) return;
+    if (enabled && !screen.getAudioTracks().length) {
       toast('Esta transmissão foi iniciada sem áudio. Use "Alterar a transmissão" para capturar com som.');
     }
-    this.applyScreenSettings(localScreen);
+    this.applyScreenSettings(screen);
   }
 
   async setInputDevice(deviceId: string, releaseFirst = false) {

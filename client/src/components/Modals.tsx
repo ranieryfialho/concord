@@ -1603,32 +1603,36 @@ function AppSettings() {
 
 // ---------- Misc ----------
 
-function ScreenPickerModal({ replace }: { replace: boolean }) {
+function ScreenPickerModal({ replace, index = 0 }: { replace: boolean; index?: number }) {
   const [sources, setSources] = useState<ScreenSource[] | null>(null);
   useEffect(() => {
     native?.screen
       .getSources()
       .then((list) => {
+        // Hide what is already being shared (a second screen must be a different one).
+        const shared = new Set(voice.sharedSourceIds());
+        const available = list.filter((s) => !shared.has(s.id));
         // No list (Wayland: the system shows its own picker, or listing failed): let getDisplayMedia ask.
-        if (list.length) setSources(list);
+        if (list.length) setSources(available);
         else start();
       })
-      .catch(start);
+      .catch(() => start());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function start() {
+  function start(sourceId?: string) {
     closeModal();
-    void (replace ? voice.replaceScreenShare() : voice.startScreenShare());
+    void (replace ? voice.replaceScreenShare(useVoice.getState().localScreens[index], sourceId) : voice.startScreenShare(sourceId));
   }
 
   function pick(id: string) {
     native?.screen.select(id);
-    start();
+    start(id);
   }
 
   return (
     <Modal wide title={replace ? 'Alterar a transmissão' : 'Compartilhar tela'} subtitle="Escolha uma tela ou janela para transmitir." onClose={closeModal}>
+      {sources?.length === 0 && <p className="muted">Todas as telas e janelas já estão sendo transmitidas.</p>}
       {!sources && <Spinner />}
       <div className="source-grid">
         {sources?.map((s) => (
@@ -1753,7 +1757,7 @@ function renderModal(modal: ModalState, threadName: string): ReactNode {
     case 'profile':
       return <ProfileModal key={modal.userId} userId={modal.userId} guildId={modal.guildId} />;
     case 'screenPicker':
-      return <ScreenPickerModal replace={!!modal.replace} />;
+      return <ScreenPickerModal replace={!!modal.replace} index={modal.index} />;
     case 'nickname':
       return <NicknameModal guildId={modal.guildId} userId={modal.userId} />;
     case 'image':

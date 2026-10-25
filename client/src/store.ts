@@ -45,7 +45,7 @@ export type ModalState =
   | { type: 'userSettings'; tab?: 'account' | 'appearance' | 'voice' | 'activity' | 'app' }
   | { type: 'guildSettings'; guildId: string }
   | { type: 'profile'; userId: string; guildId: string | null }
-  | { type: 'screenPicker'; replace?: boolean }
+  | { type: 'screenPicker'; replace?: boolean; /** Which of our screens to replace. */ index?: number }
   | { type: 'nickname'; guildId: string; userId: string }
   | { type: 'image'; url: string; filename: string }
   | { type: 'createGroup'; channelId: string | null }

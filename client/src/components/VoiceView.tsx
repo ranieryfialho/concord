@@ -60,6 +60,8 @@ interface Tile {
   userId: string;
   kind: 'user' | 'screen';
   stream: MediaStream | null;
+  /** Screens only: which of the person's shares this is, when they share more than one. */
+  screen?: { index: number; of: number };
 }
 
 function hasVideo(stream: MediaStream): boolean {
@@ -81,7 +83,7 @@ function useTiles(channelId: string): Tile[] {
   const participants = useParticipants(channelId);
   const connectedHere = useVoice((s) => s.channelId === channelId);
   const localCamera = useVoice((s) => s.localCamera);
-  const localScreen = useVoice((s) => s.localScreen);
+  const localScreens = useVoice((s) => s.localScreens);
   useVoice((s) => s.deviceTick);
   const remote = useVoice((s) => s.remoteStreams);
   const kinds = useVoice((s) => s.streamKinds);
@@ -92,7 +94,7 @@ function useTiles(channelId: string): Tile[] {
     const screens: MediaStream[] = [];
     if (uid === meId && connectedHere) {
       camera = localCamera;
-      if (localScreen) screens.push(localScreen);
+      screens.push(...localScreens);
     } else {
       for (const [streamId, stream] of Object.entries(remote[uid] ?? {})) {
         if (!hasVideo(stream)) continue;
@@ -102,7 +104,7 @@ function useTiles(channelId: string): Tile[] {
       }
     }
     tiles.push({ key: `u-${uid}`, userId: uid, kind: 'user', stream: camera });
-    screens.forEach((s, i) => tiles.push({ key: `s-${uid}-${i}`, userId: uid, kind: 'screen', stream: s }));
+    screens.forEach((s, i) => tiles.push({ key: `s-${uid}-${s.id}`, userId: uid, kind: 'screen', stream: s, screen: { index: i, of: screens.length } }));
   }
   return tiles;
 }
@@ -173,7 +175,7 @@ function TileView({
         ) : state?.self_mute || state?.suppress ? (
           <MicOff size={13} />
         ) : null}
-        <span className="truncate">{isScreen ? `Tela de ${name}` : name}</span>
+        <span className="truncate">{isScreen ? `Tela de ${name}${tile.screen && tile.screen.of > 1 ? ` (${tile.screen.index + 1})` : ''}` : name}</span>
         {!isScreen && state?.self_afk && <span className="afk-badge">AFK</span>}
       </div>
       {isScreen && <span className="live-badge tile-live">Ao vivo</span>}
