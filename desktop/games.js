@@ -1,5 +1,6 @@
 // "Jogando X": every few seconds, match running processes against a list of known games plus the
-// programs the user registered in Configurações → Atividade. The game's icon comes from its executable.
+// programs the user registered in Configurações → Atividade, and code editors (file and workspace
+// from the window title). Icons come from the executables.
 
 const { app } = require('electron');
 const { execFile } = require('node:child_process');
@@ -132,29 +133,101 @@ async function iconOf(proc) {
   }
 }
 
+// Code editors, recognized without any plugin (Rich Presence plugins talk to Discord whenever it is
+// open): the window title says which file and workspace are open.
+const EDITORS = [
+  { name: 'Visual Studio Code', exes: ['code.exe', 'code'], bundle: 'Visual Studio Code.app' },
+  { name: 'Cursor', exes: ['cursor.exe', 'cursor'], bundle: 'Cursor.app' },
+  { name: 'Windsurf', exes: ['windsurf.exe', 'windsurf'], bundle: 'Windsurf.app' },
+  { name: 'Antigravity', exes: ['antigravity.exe', 'antigravity'], bundle: 'Antigravity.app' },
+];
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Titles of open windows: on Windows those of one program, on Linux all of them (needs wmctrl). */
+async function windowTitles(proc) {
+  if (process.platform === 'win32') {
+    const out = await run('tasklist', ['/v', '/fo', 'csv', '/nh', '/fi', `IMAGENAME eq ${proc.name}`]);
+    return out
+      .split(/\r?\n/)
+      .map((l) => csvRow(l)[8])
+      .filter((t) => t && !/^N\/.$/.test(t));
+  }
+  if (process.platform === 'linux') {
+    const out = await run('wmctrl', ['-l']);
+    return out.split('\n').map((l) => l.split(/\s+/).slice(3).join(' ')).filter(Boolean);
+  }
+  return [];
+}
+
+/** "● voice.ts - concord - Visual Studio Code" → { file: 'voice.ts', workspace: 'concord' }. */
+function parseEditorTitle(title, appName) {
+  const suffix = new RegExp(`\\s[-—]\\s${escapeRe(appName)}(\\s\\[.*\\])?$`);
+  if (!suffix.test(title)) return null;
+  const parts = title.replace(suffix, '').replace(/^[●•]\s*/, '').split(/\s[-—]\s/);
+  if (parts.length >= 2) return { file: parts[0], workspace: parts[1] };
+  return /\.\w+$/.test(parts[0]) ? { file: parts[0] } : { workspace: parts[0] };
+}
+
+async function editorActivity(editor, proc, since) {
+  const titles = await windowTitles(proc);
+  const info = titles.map((t) => parseEditorTitle(t, editor.name)).find(Boolean) ?? {};
+  return {
+    type: 0,
+    name: editor.name,
+    details: info.file ? `Editando ${info.file}` : undefined,
+    state: info.workspace ? `Workspace: ${info.workspace}` : undefined,
+    timestamps: { start: since },
+  };
+}
+
 /**
- * Polls for a running game. getCustom() returns the user's registered programs ([{ exe, name }]);
- * onChange(activity | null) fires when the detected game changes.
+ * Polls for a running game and code editor. getCustom() returns the user's registered programs
+ * ([{ exe, name }]); onChange(kind, activity | null) fires when the "game" or "editor" activity changes.
  */
 function startGameDetection(getCustom, onChange) {
   let current = null; // { exe, activity }
-  async function scan() {
+  let editor = null; // { exe, since, icon, json }
+
+  async function scanGame(procs) {
     const custom = new Map(getCustom().map((g) => [g.exe.toLowerCase(), g.name]));
-    const procs = await processes();
     const hit = procs.find((p) => custom.has(p.exe) || known.has(p.exe));
     if (!hit) {
-      if (current) onChange((current = null));
+      if (current) onChange('game', (current = null));
       return;
     }
     if (current?.exe === hit.exe) return;
     const name = custom.get(hit.exe) ?? known.get(hit.exe);
     current = { exe: hit.exe, activity: { type: 0, name, timestamps: { start: Date.now() } } };
-    onChange(current.activity);
+    onChange('game', current.activity);
     const icon = await iconOf(hit);
     if (icon && current?.exe === hit.exe) {
       current.activity = { ...current.activity, assets: { large_image: icon } };
-      onChange(current.activity);
+      onChange('game', current.activity);
     }
+  }
+
+  async function scanEditor(procs) {
+    let def = null;
+    const hit = procs.find((p) => (def = EDITORS.find((e) => e.exes.includes(p.exe) || p.path?.includes(`/${e.bundle}/`))));
+    if (!hit) {
+      if (editor) onChange('editor', (editor = null));
+      return;
+    }
+    if (editor?.exe !== hit.exe) editor = { exe: hit.exe, since: Date.now(), icon: await iconOf(hit), json: '' };
+    const activity = await editorActivity(def, hit, editor.since);
+    if (editor.icon) activity.assets = { large_image: editor.icon };
+    const json = JSON.stringify(activity);
+    if (json !== editor.json) {
+      editor.json = json;
+      onChange('editor', activity);
+    }
+  }
+
+  async function scan() {
+    const procs = await processes();
+    await scanGame(procs);
+    await scanEditor(procs);
   }
   const tick = () => scan().catch((err) => console.warn('[games]', err));
   tick();

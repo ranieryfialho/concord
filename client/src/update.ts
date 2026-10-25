@@ -44,6 +44,8 @@ const DESKTOP_OS: Record<string, string> = { win32: 'win', darwin: 'mac', linux:
 
 export const useDesktopUpdate = create<DesktopUpdateState>()(() => ({ status: 'idle', current: '', version: null, percent: 0 }));
 
+let directInstaller: string | null = null;
+
 export function initDesktopUpdates() {
   if (!native) return;
   if (native.updates) {
@@ -57,9 +59,13 @@ export function initDesktopUpdates() {
   if (!current) return;
   void fetch('/api/desktop/latest')
     .then((r) => r.json())
-    .then(({ builds }: { builds: { os: string; version: string }[] }) => {
+    .then(({ builds }: { builds: { os: string; version: string; url: string }[] }) => {
       const build = builds.find((b) => b.os === os && newerVersion(b.version, current));
-      if (build) useDesktopUpdate.setState({ status: 'manual', current, version: build.version });
+      if (!build) return;
+      useDesktopUpdate.setState({ status: 'manual', current, version: build.version });
+      // Windows has a single installer: download it straight away. Linux (deb or AppImage?) and macOS
+      // (which chip?) go to the page to pick.
+      if (os === 'win') directInstaller = build.url;
     })
     .catch(() => {});
 }
@@ -76,6 +82,6 @@ export function installDesktopUpdate() {
     voice.leave();
     native.updates.install();
   } else {
-    window.open('/download', '_blank'); // the desktop shell opens it in the system browser
+    window.open(directInstaller ?? '/download', '_blank'); // the desktop shell opens it in the system browser
   }
 }

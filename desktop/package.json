@@ -1,7 +1,7 @@
 {
   "name": "@concord/desktop",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Concord desktop shell",
   "main": "main.js",
   "scripts": {
@@ -83,7 +83,8 @@
       ],
       "category": "Network;InstantMessaging",
       "maintainer": "Raniery Fialho <noreply@rafiweb.com.br>",
-      "executableName": "concord"
+      "executableName": "concord",
+      "icon": "build/icons"
     }
   },
   "homepage": "https://concord.rafiweb.com.br",

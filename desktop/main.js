@@ -32,6 +32,7 @@ let tray = null;
 let quitting = false;
 let pendingScreenSource = null;
 let gameActivity = null;
+let editorActivity = null;
 let rpcActivities = [];
 let games = null;
 
@@ -94,7 +95,9 @@ const badgeIcon = () => circleIcon(16, [236, 66, 69]);
 
 function currentActivities() {
   if (settings.SHARE_ACTIVITY === false) return [];
-  return [gameActivity, ...rpcActivities].filter(Boolean);
+  // A Rich Presence plugin in the editor says more than its window title: keep only the plugin's.
+  const editor = editorActivity && !rpcActivities.some((a) => a.name === editorActivity.name) ? editorActivity : null;
+  return [gameActivity, editor, ...rpcActivities].filter(Boolean);
 }
 
 function pushActivity() {
@@ -374,8 +377,9 @@ if (!app.requestSingleInstanceLock()) {
     createMainWindow();
     createTray();
     initUpdater({ origin: WEBAPP_ORIGIN, onState: (s) => mainWindow?.webContents.send('update:state', s) });
-    games = startGameDetection(customGames, (activity) => {
-      gameActivity = activity;
+    games = startGameDetection(customGames, (kind, activity) => {
+      if (kind === 'game') gameActivity = activity;
+      else editorActivity = activity;
       pushActivity();
     });
     startRpcServer((activities) => {
