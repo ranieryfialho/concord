@@ -16,10 +16,30 @@ const SOURCE_LABEL = 'ConcordShareSource';
 
 let state = null; // { realSink, modules: number[], watcher, timer }
 
+// LC_ALL=C: the text output of `pactl list` is translated otherwise, and we parse it below.
+const PACTL_ENV = { ...process.env, LC_ALL: 'C' };
+
 const pactl = (...args) =>
   new Promise((resolve, reject) =>
-    execFile('pactl', args, { timeout: 5000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))),
+    execFile('pactl', args, { timeout: 5000, maxBuffer: 4 * 1024 * 1024, env: PACTL_ENV }, (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))),
   );
+
+/** Same shape as `pactl --format=json list sink-inputs`, read from the plain-text output (pactl < 16 has no --format). */
+function parseSinkInputs(text) {
+  return text
+    .split(/^Sink Input #/m)
+    .slice(1)
+    .map((block) => {
+      const properties = {};
+      for (const m of block.matchAll(/^\s+([\w.-]+) = "(.*)"\s*$/gm)) properties[m[1]] = m[2];
+      return {
+        index: Number(block.match(/^\d+/)?.[0]),
+        sink: Number(block.match(/^\s*Sink: (\d+)/m)?.[1]),
+        owner_module: block.match(/^\s*Owner Module: (\d+)/m)?.[1] ?? null,
+        properties,
+      };
+    });
+}
 
 function ownPids() {
   const pids = new Set([process.pid]);
@@ -31,7 +51,12 @@ async function sinkInputs() {
   try {
     return JSON.parse(await pactl('--format=json', 'list', 'sink-inputs'));
   } catch {
-    return [];
+    // Older pactl (Ubuntu 22.04, Debian 11, Mint 21…) doesn't know --format=json.
+    try {
+      return parseSinkInputs(await pactl('list', 'sink-inputs'));
+    } catch {
+      return [];
+    }
   }
 }
 
@@ -99,7 +124,7 @@ async function start() {
   } catch (err) {
     console.warn('[linux-audio] start failed', err);
     await stop();
-    return { ok: false };
+    return { ok: false, reason: err?.code === 'ENOENT' ? 'no-pactl' : 'failed' };
   }
 }
 
@@ -128,15 +153,20 @@ function stopSync() {
   state = null;
   s.watcher?.kill();
   try {
-    execFileSync('pactl', ['set-default-sink', s.realSink], { timeout: 3000 });
-    const inputs = JSON.parse(execFileSync('pactl', ['--format=json', 'list', 'sink-inputs'], { timeout: 3000 }).toString());
+    execFileSync('pactl', ['set-default-sink', s.realSink], { timeout: 3000, env: PACTL_ENV });
+    let inputs;
+    try {
+      inputs = JSON.parse(execFileSync('pactl', ['--format=json', 'list', 'sink-inputs'], { timeout: 3000, env: PACTL_ENV }).toString());
+    } catch {
+      inputs = parseSinkInputs(execFileSync('pactl', ['list', 'sink-inputs'], { timeout: 3000, env: PACTL_ENV }).toString());
+    }
     for (const i of inputs) {
       if (i.owner_module != null && s.modules.includes(Number(i.owner_module))) continue;
-      try { execFileSync('pactl', ['move-sink-input', String(i.index), s.realSink], { timeout: 3000 }); } catch {}
+      try { execFileSync('pactl', ['move-sink-input', String(i.index), s.realSink], { timeout: 3000, env: PACTL_ENV }); } catch {}
     }
   } catch {}
   for (const id of [...s.modules].reverse()) {
-    try { execFileSync('pactl', ['unload-module', String(id)], { timeout: 3000 }); } catch {}
+    try { execFileSync('pactl', ['unload-module', String(id)], { timeout: 3000, env: PACTL_ENV }); } catch {}
   }
 }
 

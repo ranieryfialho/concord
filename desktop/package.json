@@ -1,7 +1,7 @@
 {
   "name": "@concord/desktop",
   "private": true,
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Concord desktop shell",
   "main": "main.js",
   "scripts": {
@@ -82,6 +82,20 @@
           ]
         }
       ],
+      "deb": {
+        "depends": [
+          "libgtk-3-0",
+          "libnotify4",
+          "libnss3",
+          "libxss1",
+          "libxtst6",
+          "xdg-utils",
+          "libatspi2.0-0",
+          "libuuid1",
+          "libsecret-1-0",
+          "pulseaudio-utils"
+        ]
+      },
       "category": "Network;InstantMessaging",
       "maintainer": "Raniery Fialho <noreply@rafiweb.com.br>",
       "executableName": "concord",

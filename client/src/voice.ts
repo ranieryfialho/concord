@@ -1106,7 +1106,14 @@ class VoiceManager {
     const screen = window.ConcordNative?.screen;
     if (!screen?.audioStart) return;
     const started = await screen.audioStart().catch(() => null);
-    if (!started?.ok || !started.label) return;
+    if (!started?.ok || !started.label) {
+      toast(
+        started?.reason === 'no-pactl'
+          ? 'Para transmitir com áudio, instale o pacote pulseaudio-utils (comando pactl). Transmitindo só a imagem.'
+          : 'Não foi possível capturar o áudio do computador; transmitindo só a imagem.',
+      );
+      return;
+    }
     try {
       let device: MediaDeviceInfo | undefined;
       for (let i = 0; i < 20 && !device; i++) {
