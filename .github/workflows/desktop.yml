@@ -58,6 +58,8 @@ jobs:
           name: installer-${{ matrix.os }}
           path: ${{ matrix.artifacts }}
           if-no-files-found: error
+          # Só servem de ponte até o job "publish"; os instaladores ficam na VPS. Evita estourar a cota.
+          retention-days: 1
 
   publish:
     needs: build
