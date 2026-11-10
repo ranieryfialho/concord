@@ -1,6 +1,6 @@
 name: Build do app desktop
 
-# Gera os instaladores (Windows, macOS, Linux) e publica na VPS, de onde a página
+# Gera os instaladores (Windows, macOS, Linux) e envia cada um direto para a VPS, de onde a página
 # /download do Concord os serve. Os latest*.yml e .blockmap vão junto: são o feed do
 # atualizador automático do app (desktop/updater.js). O repositório é privado, então não usamos GitHub Releases.
 #   Nova versão: suba "version" em desktop/package.json, depois
@@ -53,35 +53,24 @@ jobs:
       - name: Gerar instalador
         run: npm run dist -w desktop
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: installer-${{ matrix.os }}
-          path: ${{ matrix.artifacts }}
-          if-no-files-found: error
-          # Só servem de ponte até o job "publish"; os instaladores ficam na VPS. Evita estourar a cota.
-          retention-days: 1
-
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: installers
-          merge-multiple: true
-
-      - name: Conferir arquivos
-        run: ls -lh installers
-
+      # Cada job envia o próprio instalador direto para a VPS (scp): sem passar pelo armazenamento de
+      # artefatos do GitHub, que tem cota pequena. Os latest*.yml vão por último na lista (o feed do
+      # atualizador só deve apontar para a versão nova depois que o instalador já estiver lá).
       - name: Enviar para a VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          source: "installers/*"
-          target: "~/concord/downloads"
-          strip_components: 1
-          timeout: 15m
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          FILES: ${{ matrix.artifacts }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/concord_deploy
+          chmod 600 ~/.ssh/concord_deploy
+          opts="-i $HOME/.ssh/concord_deploy -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30"
+          ls -lh $FILES
+          for f in $FILES; do
+            echo "-> $f"
+            scp $opts "$f" "$VPS_USER@$VPS_HOST:concord/downloads/"
+          done
