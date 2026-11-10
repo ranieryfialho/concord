@@ -82,24 +82,24 @@
           ]
         }
       ],
-      "deb": {
-        "depends": [
-          "libgtk-3-0",
-          "libnotify4",
-          "libnss3",
-          "libxss1",
-          "libxtst6",
-          "xdg-utils",
-          "libatspi2.0-0",
-          "libuuid1",
-          "libsecret-1-0",
-          "pulseaudio-utils"
-        ]
-      },
       "category": "Network;InstantMessaging",
       "maintainer": "Raniery Fialho <noreply@rafiweb.com.br>",
       "executableName": "concord",
       "icon": "build/icons"
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "pulseaudio-utils"
+      ]
     }
   },
   "homepage": "https://concord.rafiweb.com.br",
