@@ -24,6 +24,8 @@ const SNOOZE_MS = 30 * 60_000;
 export function serverBuild(build: string | null | undefined) {
   if (!build || RUNNING_BUILD === 'dev' || build === RUNNING_BUILD) return;
   useUpdate.setState({ available: build });
+  // A new release was just deployed: the desktop shell may have a new installer too.
+  void detectDesktopUpdate();
 }
 
 export function snoozeUpdate() {
@@ -46,10 +48,37 @@ export const useDesktopUpdate = create<DesktopUpdateState>()(() => ({ status: 'i
 
 let directInstaller: string | null = null;
 
+/**
+ * Asks the server whether a newer installer than the running shell exists, independent of the shell's own
+ * (infrequent) check. If so, the shell is told to check/download right away; until it reports progress the
+ * UI shows "available" (status 'manual'), and installDesktopUpdate() starts the download.
+ */
+export async function detectDesktopUpdate() {
+  const updates = native?.updates;
+  if (!native || !updates) return;
+  const s = useDesktopUpdate.getState();
+  if (s.status !== 'idle') return;
+  const os = DESKTOP_OS[native.platform];
+  const current = s.current || /\/(\d+\.\d+\.\d+) Chrome\//.exec(navigator.userAgent)?.[1];
+  if (!current) return;
+  try {
+    const { builds } = (await (await fetch('/api/desktop/latest')).json()) as { builds: { os: string; version: string }[] };
+    const build = builds.find((b) => b.os === os && newerVersion(b.version, current));
+    if (!build || useDesktopUpdate.getState().status !== 'idle') return;
+    useDesktopUpdate.setState({ status: 'manual', current, version: build.version });
+    updates.check?.();
+  } catch {
+    /* offline: the next attempt tries again */
+  }
+}
+
 export function initDesktopUpdates() {
   if (!native) return;
   if (native.updates) {
-    void native.updates.getState().then((s) => s && useDesktopUpdate.setState(s));
+    void native.updates.getState().then((s) => {
+      if (s) useDesktopUpdate.setState(s);
+      void detectDesktopUpdate();
+    });
     native.updates.onState((s) => useDesktopUpdate.setState(s));
     return;
   }
@@ -78,9 +107,19 @@ function newerVersion(a: string, b: string) {
 }
 
 export function installDesktopUpdate() {
-  if (useDesktopUpdate.getState().status === 'ready' && native?.updates) {
+  const status = useDesktopUpdate.getState().status;
+  if (status === 'ready' && native?.updates) {
     voice.leave();
     native.updates.install();
+  } else if (status === 'manual' && native?.updates?.check) {
+    // The shell can update itself: have it download now (progress comes back through onState).
+    useDesktopUpdate.setState({ status: 'downloading', percent: 0 });
+    native.updates.check();
+    setTimeout(() => {
+      if (useDesktopUpdate.getState().status === 'downloading' && useDesktopUpdate.getState().percent === 0) {
+        window.open(directInstaller ?? '/download', '_blank'); // the shell didn't start: fall back to the page
+      }
+    }, 15_000);
   } else {
     window.open(directInstaller ?? '/download', '_blank'); // the desktop shell opens it in the system browser
   }

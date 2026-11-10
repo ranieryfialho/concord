@@ -12,13 +12,16 @@ const os = require('node:os');
 const path = require('node:path');
 
 const FIRST_CHECK_MS = 10_000;
-const CHECK_EVERY_MS = 30 * 60_000;
+const CHECK_EVERY_MS = 10 * 60_000;
+const RETRY_MS = 60_000;
+const MIN_GAP_MS = 30_000;
 
 /** idle → downloading → ready; "manual" when it can't update itself and the user must use /download. */
 let state = { status: 'idle', current: app.getVersion(), version: null, percent: 0 };
 let notify = () => {};
 let installFn = null;
 let checkNow = () => {};
+let retryCheck = () => {};
 
 function set(patch) {
   const wasReady = state.status === 'ready';
@@ -40,6 +43,8 @@ function failed(err) {
   console.warn('[update]', err);
   // A known newer version we couldn't fetch or install: send the user to the download page instead.
   set({ status: state.version ? 'manual' : 'idle' });
+  // Nothing known yet (feed not published yet, network down…): try again soon, not in 30 minutes.
+  if (!state.version) retryCheck();
 }
 
 function electronUpdater(origin) {
@@ -122,10 +127,18 @@ function initUpdater({ origin, onState }) {
   notify = onState;
   if (!app.isPackaged) return;
   const check = process.platform === 'darwin' ? macUpdater(origin) : electronUpdater(origin);
-  const tick = () => {
-    if (state.status === 'idle') void check();
+  let lastCheck = 0;
+  const run = () => {
+    if (state.status !== 'idle') return;
+    lastCheck = Date.now();
+    void check();
   };
-  checkNow = tick;
+  const tick = () => {
+    if (Date.now() - lastCheck >= MIN_GAP_MS) run();
+  };
+  checkNow = run; // explicit requests (button, new web build) skip the throttle
+  retryCheck = () => setTimeout(tick, RETRY_MS);
+  app.on('browser-window-focus', tick); // coming back to the app after a deploy picks up the new installer
   setTimeout(tick, FIRST_CHECK_MS);
   setInterval(tick, CHECK_EVERY_MS);
 }

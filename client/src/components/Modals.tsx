@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp, Camera, Check, Copy, Crown, ExternalLink, Minus, Monitor, MonitorCog, Moon, Plus, Sun, Trash2, X } from 'lucide-react';
 import { RELEASES, markReleaseSeen } from '../changelog';
+import { detectDesktopUpdate, installDesktopUpdate, useDesktopUpdate } from '../update';
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { type ThemePref, setThemePref, useTheme } from '../theme';
 import { useMediaDevices } from './DeviceMenu';
@@ -1699,15 +1700,31 @@ const NOTE_TAGS = { novo: 'Novo', melhoria: 'Melhoria', removido: 'Removido' } a
 
 function PatchNotesModal() {
   useEffect(markReleaseSeen, []);
+  const { status, version, percent } = useDesktopUpdate();
+  // The installer may be published a bit after the web build: keep looking while the notes are open.
+  useEffect(() => {
+    void detectDesktopUpdate();
+    const t = setInterval(() => void detectDesktopUpdate(), 15_000);
+    return () => clearInterval(t);
+  }, []);
+  const hasInstaller = status === 'ready' || status === 'manual';
   return (
     <Modal
       title="Novidades"
       subtitle="O que mudou no Concord"
       onClose={closeModal}
       footer={
-        <button className="btn btn-primary" onClick={closeModal} autoFocus>
-          Entendi
-        </button>
+        <>
+          {status === 'downloading' && <span className="small muted">Baixando a versão {version}… {percent}%</span>}
+          {hasInstaller && (
+            <button className="btn btn-primary" onClick={installDesktopUpdate}>
+              {status === 'ready' ? `Reiniciar e atualizar para ${version}` : `Baixar a versão ${version}`}
+            </button>
+          )}
+          <button className={hasInstaller ? 'btn' : 'btn btn-primary'} onClick={closeModal} autoFocus={!hasInstaller}>
+            Entendi
+          </button>
+        </>
       }
     >
       <div className="patch-notes">
