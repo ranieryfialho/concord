@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld('ConcordNative', {
   screen: {
     getSources: () => ipcRenderer.invoke('screen:sources'),
     select: (id) => ipcRenderer.send('screen:select', String(id)),
+    audioStart: () => ipcRenderer.invoke('screen:audio-start'),
+    audioStop: () => ipcRenderer.invoke('screen:audio-stop'),
   },
   settings: {
     get: (key) => ipcRenderer.invoke('settings:get', String(key)),

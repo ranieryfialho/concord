@@ -1,6 +1,7 @@
 import { Info } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { native } from '../native';
+import { closeModal, openModal } from '../store';
 import { RUNNING_BUILD, installDesktopUpdate, useDesktopUpdate } from '../update';
 
 const OS_NAME: Record<string, string> = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
@@ -95,6 +96,15 @@ function AppInfoPopover() {
           {checking === 'busy' ? 'Procurando…' : 'Procurar atualizações'}
         </button>
       )}
+      <button
+        className="btn small"
+        onClick={() => {
+          closeModal();
+          openModal({ type: 'patchNotes' });
+        }}
+      >
+        Novidades
+      </button>
       {canCheck && checking === 'done' && <p className="small muted">Você está na versão mais recente.</p>}
     </div>
   );

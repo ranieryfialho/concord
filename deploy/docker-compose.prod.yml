@@ -22,7 +22,6 @@ services:
       - ./downloads:/downloads:ro
     networks:
       - proxy
-    # Whisper não pode sufocar os outros sites da VPS.
     cpus: ${CONCORD_CPUS:-2}
     mem_limit: ${CONCORD_MEMORY:-3g}
 

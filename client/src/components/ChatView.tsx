@@ -9,7 +9,6 @@ import {
   MessagesSquare,
   Phone,
   Pin,
-  ScrollText,
   Search,
   Upload,
   UserPlus,
@@ -47,7 +46,7 @@ import { Composer, addFilesToComposer } from './Composer';
 import { Markdown } from './Markdown';
 import { GroupMemberList, MemberList, leaveGroup } from './MemberList';
 import { MessageItem } from './MessageItem';
-import { TranscriptPanel, VoiceControls, VoiceStage } from './VoiceView';
+import { VoiceControls, VoiceStage } from './VoiceView';
 
 const GROUP_WINDOW = 7 * 60 * 1000;
 
@@ -471,7 +470,6 @@ export function ChatView({ channel }: { channel: Channel }) {
   // On a phone the member list is a drawer that starts closed, independent of the saved desktop preference.
   const showMembers = useStore((s) => (mobile ? s.membersDrawer : s.showMembers));
   const inThisCall = useVoice((s) => s.channelId === channel.id);
-  const transcriptOpen = useVoice((s) => s.transcriptOpen);
   const [popout, setPopout] = useState<'pins' | 'threads' | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState<string | null>(null);
@@ -516,8 +514,7 @@ export function ChatView({ channel }: { channel: Channel }) {
   else titleIcon = <Hash size={22} className="muted" />;
 
   let sidePanel = null;
-  if (transcriptOpen && (inThisCall || isPrivate)) sidePanel = <TranscriptPanel channel={channel} />;
-  else if (search) sidePanel = <SearchPanel channel={channel} query={search} onClose={() => setSearch(null)} />;
+  if (search) sidePanel = <SearchPanel channel={channel} query={search} onClose={() => setSearch(null)} />;
   else if (showMembers && channel.guild_id) sidePanel = <MemberList guildId={channel.guild_id} />;
   else if (showMembers && channel.type === 'group_dm') sidePanel = <GroupMemberList channel={channel} />;
 
@@ -561,13 +558,6 @@ export function ChatView({ channel }: { channel: Channel }) {
               </button>
               <button className="icon-btn" title="Adicionar amigos ao grupo" onClick={() => openModal({ type: 'createGroup', channelId: channel.id })}>
                 <UserPlus size={20} />
-              </button>
-              <button
-                className={cx('icon-btn', transcriptOpen && 'active')}
-                title="Transcrições das chamadas"
-                onClick={() => useVoice.setState({ transcriptOpen: !transcriptOpen })}
-              >
-                <ScrollText size={20} />
               </button>
             </>
           )}
@@ -625,7 +615,6 @@ export function ChatView({ channel }: { channel: Channel }) {
             onClick={() => {
               setState({ membersDrawer: false });
               setSearch(null);
-              useVoice.setState({ transcriptOpen: false });
             }}
           />
         )}

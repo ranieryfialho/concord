@@ -276,10 +276,16 @@ function migrateTo4() {
   db.exec('ALTER TABLE users ADD COLUMN recovery_hash TEXT;');
 }
 
+function migrateTo5() {
+  // Call transcription was removed; its tables go with it.
+  db.exec('DROP TABLE IF EXISTS transcript_entries; DROP TABLE IF EXISTS transcripts;');
+}
+
 const MIGRATIONS: [number, () => void][] = [
   [2, migrateTo2],
   [3, migrateTo3],
   [4, migrateTo4],
+  [5, migrateTo5],
 ];
 
 {

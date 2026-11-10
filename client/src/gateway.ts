@@ -36,12 +36,10 @@ import type {
   Presence,
   ReadyPayload,
   RelationshipType,
-  TranscriptEntry,
-  Transcription,
   User,
   VoiceState,
 } from './types';
-import { voice } from './voice';
+import { useVoice, voice } from './voice';
 import { serverBuild } from './update';
 
 type Handler = (d: any) => void;
@@ -195,13 +193,15 @@ const handlers: Record<string, Handler> = {
       setState((st) => ({ readStates: { ...st.readStates, [m.channel_id]: m.id } }));
       return;
     }
-    if (isViewing(m.channel_id)) {
+    const channel = s.channels[m.channel_id];
+    // A voice room's text chat only counts as seen while its panel is open.
+    const voiceChatClosed = channel?.type === 'voice' && !useVoice.getState().chatOpen;
+    if (isViewing(m.channel_id) && !voiceChatClosed) {
       ackChannel(m.channel_id);
       return;
     }
     if (m.type !== 'default') return;
-    const channel = s.channels[m.channel_id];
-    if (isPrivateChannel(channel) || mentionsMe(m)) {
+    if (isPrivateChannel(channel) || channel?.type === 'voice' || mentionsMe(m)) {
       setState((st) => ({ mentionCounts: { ...st.mentionCounts, [m.channel_id]: (st.mentionCounts[m.channel_id] ?? 0) + 1 } }));
       notifyMessage(m);
     }
@@ -279,24 +279,6 @@ const handlers: Record<string, Handler> = {
     toast('Você foi movido para outro canal de voz');
     void voice.join(d.guild_id, d.channel_id);
   },
-
-  TRANSCRIPTION_UPDATE: (d: Omit<Transcription, 'entries'>) => {
-    setState((s) => {
-      const prev = s.transcriptions[d.channel_id];
-      // A new session starts with an empty transcript.
-      const entries = d.active && prev?.active && prev.started_at === d.started_at ? prev.entries : [];
-      return { transcriptions: { ...s.transcriptions, [d.channel_id]: { ...d, entries } } };
-    });
-    voice.syncTranscription();
-  },
-
-  TRANSCRIPT: (d: { channel_id: string; entry: TranscriptEntry }) =>
-    setState((s) => {
-      const t = s.transcriptions[d.channel_id];
-      if (!t || t.entries.some((e) => e.id === d.entry.id)) return {};
-      const entries = [...t.entries, d.entry].sort((a, b) => a.at - b.at);
-      return { transcriptions: { ...s.transcriptions, [d.channel_id]: { ...t, entries } } };
-    }),
 
   CALL_CREATE: (c: Call) => setCall(c, c.channel_id),
   CALL_UPDATE: (c: Call) => setCall(c, c.channel_id),

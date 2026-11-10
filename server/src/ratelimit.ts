@@ -65,5 +65,4 @@ export const limits = {
   friendRequests: rateLimit(20, 60 * 60_000),
   invitesJoin: rateLimit(20, 60 * 60_000),
   guildCreate: rateLimit(10, 60 * 60_000),
-  transcribe: rateLimit(120, 60_000),
 };

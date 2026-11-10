@@ -20,6 +20,7 @@ const { checkForUpdate, initUpdater, installUpdate, updateState } = require('./u
 const { startGameDetection, runningPrograms } = require('./games');
 const { setOverlayMembers, setOverlayVisible } = require('./overlay');
 const { startRpcServer } = require('./rpc');
+const linuxAudio = require('./linux-audio');
 
 // Installed builds talk to production; `npm run desktop` in the repo keeps using the local server.
 const WEBAPP_URL = process.env.CONCORD_URL || (app.isPackaged ? 'https://concord.rafiweb.com.br' : 'http://localhost:3001');
@@ -330,6 +331,9 @@ function registerIpc() {
     const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 320, height: 180 } });
     return sources.map((s) => ({ id: s.id, name: s.name, thumbnail: s.thumbnail.isEmpty() ? '' : s.thumbnail.toDataURL() }));
   });
+  // Linux has no loopback capture in Electron: the main process routes system audio to a virtual source instead.
+  ipcMain.handle('screen:audio-start', (e) => (fromApp(e) ? linuxAudio.start() : { ok: false }));
+  ipcMain.handle('screen:audio-stop', (e) => fromApp(e) && linuxAudio.stop());
   ipcMain.on('screen:select', (e, id) => {
     if (fromApp(e)) pendingScreenSource = String(id);
   });
@@ -389,7 +393,10 @@ if (!app.requestSingleInstanceLock()) {
     });
   });
 
-  app.on('before-quit', () => (quitting = true));
+  app.on('before-quit', () => {
+    quitting = true;
+    linuxAudio.stopSync();
+  });
   app.on('activate', showMain);
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

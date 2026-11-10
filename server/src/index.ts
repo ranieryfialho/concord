@@ -15,7 +15,6 @@ import { guildsRouter } from './routes/guilds.js';
 import { invitesRouter } from './routes/invites.js';
 import { usersRouter } from './routes/users.js';
 import { livekitEnabled, voiceRouter } from './routes/voice.js';
-import { transcriptionMode } from './transcription.js';
 import { INLINE_EXTENSIONS, removeRequestFiles } from './uploads.js';
 import { HttpError } from './util.js';
 import { CLIENT_DIST } from './version.js';
@@ -98,6 +97,6 @@ const server = http.createServer(app);
 attachGateway(server);
 server.listen(PORT, () => {
   console.log(
-    `Concord server on http://localhost:${PORT}  (data: ${DATA_DIR}, voice: ${livekitEnabled ? 'livekit' : 'mesh'}, transcription: ${transcriptionMode})`,
+    `Concord server on http://localhost:${PORT}  (data: ${DATA_DIR}, voice: ${livekitEnabled ? 'livekit' : 'mesh'})`,
   );
 });

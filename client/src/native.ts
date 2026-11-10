@@ -24,6 +24,9 @@ export interface ConcordNative {
   screen: {
     getSources(): Promise<ScreenSource[]>;
     select(id: string): void;
+    /** Linux only: routes system audio (minus the call's) to a virtual input and returns its label. */
+    audioStart?(): Promise<{ ok: boolean; label?: string }>;
+    audioStop?(): Promise<void>;
   };
   settings: {
     get<T = unknown>(key: string): Promise<T>;

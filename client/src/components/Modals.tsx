@@ -1,4 +1,5 @@
 import { ArrowDown, ArrowUp, Camera, Check, Copy, Crown, ExternalLink, Minus, Monitor, MonitorCog, Moon, Plus, Sun, Trash2, X } from 'lucide-react';
+import { RELEASES, markReleaseSeen } from '../changelog';
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { type ThemePref, setThemePref, useTheme } from '../theme';
 import { useMediaDevices } from './DeviceMenu';
@@ -1694,6 +1695,41 @@ function NicknameModal({ guildId, userId }: { guildId: string; userId: string })
   );
 }
 
+const NOTE_TAGS = { novo: 'Novo', melhoria: 'Melhoria', removido: 'Removido' } as const;
+
+function PatchNotesModal() {
+  useEffect(markReleaseSeen, []);
+  return (
+    <Modal
+      title="Novidades"
+      subtitle="O que mudou no Concord"
+      onClose={closeModal}
+      footer={
+        <button className="btn btn-primary" onClick={closeModal} autoFocus>
+          Entendi
+        </button>
+      }
+    >
+      <div className="patch-notes">
+        {RELEASES.map((r) => (
+          <section key={r.id}>
+            <h4>
+              {r.title} <span className="small muted">{r.date}</span>
+            </h4>
+            <ul>
+              {r.items.map((it, i) => (
+                <li key={i}>
+                  <span className={`patch-tag ${it.tag}`}>{NOTE_TAGS[it.tag]}</span> {it.text}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
 function ConfirmModal({ title, body, confirmLabel, onConfirm }: { title: string; body: string; confirmLabel: string; onConfirm: () => void | Promise<void> }) {
   const { busy, error, run } = useBusy();
   return (
@@ -1766,6 +1802,8 @@ function renderModal(modal: ModalState, threadName: string): ReactNode {
       return <CreateGroupModal channelId={modal.channelId} />;
     case 'createThread':
       return <CreateThreadModal channelId={modal.channelId} messageId={modal.message?.id ?? null} initialName={threadName} />;
+    case 'patchNotes':
+      return <PatchNotesModal />;
     case 'confirm':
       return <ConfirmModal key={modal.title} {...modal} />;
   }

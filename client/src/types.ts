@@ -130,34 +130,6 @@ export interface VoiceState {
   channel_started_at?: number;
 }
 
-export interface TranscriptEntry {
-  id: string;
-  user_id: string;
-  text: string;
-  at: number;
-}
-
-export interface SavedTranscript {
-  id: string;
-  channel_id: string;
-  started_by: string;
-  started_at: number;
-  ended_at: number | null;
-  active: boolean;
-  entry_count: number;
-  speaker_ids: string[];
-  entries?: TranscriptEntry[];
-}
-
-export interface Transcription {
-  channel_id: string;
-  active: boolean;
-  transcript_id?: string | null;
-  started_by: string | null;
-  started_at: number | null;
-  entries: TranscriptEntry[];
-}
-
 export interface Call {
   channel_id: string;
   ringing: string[];

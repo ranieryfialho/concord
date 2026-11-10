@@ -16,7 +16,6 @@ import type {
   ReadyPayload,
   RelationshipType,
   Role,
-  Transcription,
   User,
   VoiceState,
 } from './types';
@@ -50,6 +49,7 @@ export type ModalState =
   | { type: 'image'; url: string; filename: string }
   | { type: 'createGroup'; channelId: string | null }
   | { type: 'createThread'; channelId: string; message: Message | null }
+  | { type: 'patchNotes' }
   | { type: 'confirm'; title: string; body: string; confirmLabel: string; onConfirm: () => void | Promise<void> };
 
 export interface State {
@@ -70,7 +70,6 @@ export interface State {
   typing: Record<string, Record<string, number>>;
   voiceStates: Record<string, VoiceState>;
   calls: Record<string, Call>;
-  transcriptions: Record<string, Transcription>;
   view: View;
   lastChannels: Record<string, string>;
   showMembers: boolean;
@@ -126,7 +125,6 @@ const initialData = {
   typing: {},
   voiceStates: {},
   calls: {},
-  transcriptions: {},
   replyingTo: {},
   editingId: null,
   modal: null,

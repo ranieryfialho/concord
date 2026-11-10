@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import { initActivity } from '../activity';
 import { openChannel } from '../gateway';
 import { native } from '../native';
-import { HOME, ackChannel, getState, totalMentions, useStore } from '../store';
+import { HOME, ackChannel, getState, openModal, totalMentions, useStore } from '../store';
+import { hasUnseenRelease } from '../changelog';
 import { initDesktopUpdates } from '../update';
 import { ChatView } from './ChatView';
 import { ContextMenuHost } from './ContextMenu';
@@ -36,6 +37,10 @@ export function Layout() {
   useEffect(() => native?.onNotificationClick((id) => openChannel(id)), []);
   useEffect(initDesktopUpdates, []);
   useEffect(initActivity, []);
+  // Patch notes once per release, unless something else is already on screen.
+  useEffect(() => {
+    if (hasUnseenRelease() && !getState().modal) openModal({ type: 'patchNotes' });
+  }, []);
 
   useEffect(() => {
     const onFocus = () => {

@@ -71,8 +71,6 @@ Dois modos de transporte, escolhidos pelo servidor:
 
 **Supressão de ruído:** como a do Discord. A **Avançada (IA)**, padrão, usa o RNNoise (uma rede neural pequena, em WebAssembly, rodando no seu computador) para tirar teclado, ventilador, trânsito e outros ruídos de fundo da sua voz; também há a **Padrão** (filtro do navegador) e **Desligada** (para música ou microfone de estúdio). Escolha em Configurações → Voz e vídeo ou na setinha do microfone durante a chamada.
 
-**Transcrição de chamadas:** qualquer participante liga a transcrição pelo botão de legendas. Todos veem o aviso "Transcrevendo", as legendas aparecem ao vivo sobre o vídeo e o painel lista cada fala com nome e horário, com download em `.txt`. Cada pessoa envia só o próprio microfone, então o texto já sai identificado. Por padrão roda o **Whisper "small" no próprio servidor** (gratuito, o áudio não sai da sua máquina; o modelo de ~250 MB é baixado na primeira vez). Cada fala é **salva no banco** assim que é transcrita: o botão de transcrições no topo do canal de voz (ou da DM) tem as abas "Ao vivo" e "Salvas", com o histórico para ler, baixar em `.txt` ou excluir. Quem pode ver o canal pode ler; excluir, só quem iniciou ou quem tem "Gerenciar mensagens". Sessões em que ninguém falou não são guardadas.
-
 **Aparência:** tema claro (padrão), escuro ou seguindo o sistema, em Configurações → Aparência ou no menu do seu avatar.
 
 **Segurança:** limite de requisições (login, cadastro, mensagens, uploads, convites e gateway); prévias de links protegidas contra SSRF (bloqueia IPs internos em cada DNS e redirecionamento); TURN não retransmite para redes privadas; CSP no app; uploads que não são mídia são servidos como download.
@@ -83,7 +81,7 @@ Dois modos de transporte, escolhidos pelo servidor:
 
 ## Colocar no ar (para os amigos usarem)
 
-Microfone, câmera e tela só funcionam em `localhost` ou **HTTPS**, então para outras pessoas usarem você precisa de um domínio. Receita para uma VPS Linux comum (2 GB de RAM bastam; com a transcrição local, prefira 4 GB, porque o Whisper usa ~300 MB e bastante CPU enquanto transcreve):
+Microfone, câmera e tela só funcionam em `localhost` ou **HTTPS**, então para outras pessoas usarem você precisa de um domínio. Receita para uma VPS Linux comum (2 GB de RAM bastam):
 
 1. Aponte um registro DNS `A` (ex.: `chat.seudominio.com`) para o IP da VPS.
 2. Libere no firewall: `80/tcp`, `443/tcp`, `443/udp`, `3478/tcp+udp` e `49160-49200/udp` (TURN). Com LiveKit, também `7881/tcp` e `50000-50100/udp`.
@@ -113,11 +111,6 @@ Microfone, câmera e tela só funcionam em `localhost` ou **HTTPS**, então para
 | `TURN_USERNAME` / `TURN_CREDENTIAL` | credenciais fixas (TURN gerenciado: Cloudflare, Metered…) | — |
 | `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | ativa o modo LiveKit | — |
 | `CONCORD_EMBEDS` | `0` desliga as prévias de links | ligado |
-| `TRANSCRIBE` | `0` desliga a transcrição | ligado |
-| `TRANSCRIBE_MODEL` | modelo Whisper local (`onnx-community/whisper-base` é ~2× mais rápido, mas erra palavras curtas como "entendi") | `onnx-community/whisper-small` |
-| `TRANSCRIBE_LANGUAGE` | idioma das chamadas (código ISO) | `pt` |
-| `TRANSCRIBE_API_URL` / `TRANSCRIBE_API_KEY` / `TRANSCRIBE_API_MODEL` | usa uma API compatível com OpenAI no lugar do Whisper local (ex.: `https://api.groq.com/openai/v1` + `whisper-large-v3`) | — |
-| `TRANSCRIBE_DEBUG_DIR` | salva cada trecho de áudio recebido como `.wav` (só para depurar) | — |
 
 Cliente e desktop: `CONCORD_URL` (desktop), `CONCORD_SERVER` (proxy do Vite), `VITE_API_URL` (API em outra origem).
 

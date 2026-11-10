@@ -1,12 +1,8 @@
 import {
-  ArrowLeft,
-  Captions,
   ChevronUp,
   Coffee,
-  Download,
   Eye,
   EyeOff,
-  Trash2,
   HeadphoneOff,
   Headphones,
   Maximize2,
@@ -18,23 +14,20 @@ import {
   MonitorOff,
   PhoneOff,
   PictureInPicture2,
-  ScrollText,
   SlidersHorizontal,
   Video,
   VideoOff,
   Volume2,
   VolumeX,
-  X,
 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { api } from '../api';
 import { P, has } from '../permissions';
-import { channelLabel, closeModal, getState, isUnread, nameOf, openModal, toast, useStore } from '../store';
-import type { Channel, SavedTranscript, TranscriptEntry } from '../types';
+import { isUnread, nameOf, toast, useStore } from '../store';
+import type { Channel } from '../types';
 import { cx } from '../utils';
-import { STREAM_QUALITIES, type StreamKind, savePrefs, transcriptionAvailable, useVoice, voice } from '../voice';
-import { Avatar, MobileBack, ResizablePanel, Spinner, useLongPress } from './common';
+import { STREAM_QUALITIES, type StreamKind, savePrefs, useVoice, voice } from '../voice';
+import { Avatar, MobileBack, ResizablePanel, useLongPress } from './common';
 import { DeviceMenu } from './DeviceMenu';
 import { onScreenShareClick } from './StreamMenu';
 import { keyLabel } from './PushToTalk';
@@ -214,38 +207,6 @@ function TileView({
   );
 }
 
-/** Last lines spoken in the call, shown over the stage like subtitles. */
-function LiveCaptions({ channelId, guildId }: { channelId: string; guildId: string | null }) {
-  const entries = useStore(useShallow((s) => s.transcriptions[channelId]?.entries.slice(-2) ?? []));
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  const recent = entries.filter((e) => now - e.at < 12_000);
-  if (!recent.length) return null;
-  return (
-    <div className="live-captions">
-      {recent.map((e) => (
-        <div key={e.id} className="caption-line">
-          <strong>{nameOf(getState(), e.user_id, guildId)}:</strong> {e.text}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function TranscribingBanner({ channelId, guildId }: { channelId: string; guildId: string | null }) {
-  const t = useStore((s) => s.transcriptions[channelId]);
-  const by = useStore((s) => (t?.started_by ? nameOf(s, t.started_by, guildId) : ''));
-  if (!t?.active) return null;
-  return (
-    <div className="transcribing-banner" title="As falas de todos na chamada estão sendo convertidas em texto">
-      <span className="rec-dot" /> Transcrevendo{by ? ` · iniciado por ${by}` : ''}
-    </div>
-  );
-}
-
 function setHideNoVideo(hideNoVideo: boolean) {
   useVoice.setState({ hideNoVideo });
   savePrefs();
@@ -293,7 +254,6 @@ export function VoiceStage({ channel, compact = false }: { channel: Channel; com
 
   return (
     <div className={cx('voice-stage', focused && 'has-focus', compact && 'compact')}>
-      <TranscribingBanner channelId={channel.id} guildId={channel.guild_id} />
       {allTiles.length === 0 && (
         <div className="empty-state">
           <div className="empty-icon">
@@ -344,7 +304,6 @@ export function VoiceStage({ channel, compact = false }: { channel: Channel; com
           </div>
         )
       )}
-      <LiveCaptions channelId={channel.id} guildId={channel.guild_id} />
     </div>
   );
 }
@@ -369,8 +328,6 @@ export function VoiceControls({ channel, floating = true }: { channel: Channel; 
   const selfAfk = useVoice((s) => s.selfAfk);
   const selfVideo = useVoice((s) => s.selfVideo);
   const selfStream = useVoice((s) => s.selfStream);
-  const transcriptOpen = useVoice((s) => s.transcriptOpen);
-  const transcribing = useStore((s) => !!s.transcriptions[channel.id]?.active);
   const suppressed = useStore((s) => !!(s.me && s.voiceStates[s.me.id]?.suppress));
   const pttKey = useVoice((s) => (s.pttEnabled ? s.pttKey : ''));
   const pttActive = useVoice((s) => s.pttActive);
@@ -386,11 +343,6 @@ export function VoiceControls({ channel, floating = true }: { channel: Channel; 
         </button>
       </div>
     );
-  }
-
-  function toggleTranscription() {
-    void voice.setTranscription(!transcribing);
-    if (!transcribing) useVoice.setState({ transcriptOpen: true });
   }
 
   return (
@@ -430,260 +382,10 @@ export function VoiceControls({ channel, floating = true }: { channel: Channel; 
           </button>
         </>
       )}
-      {transcriptionAvailable() && (
-        <button
-          className={cx('control-btn', transcribing && 'rec')}
-          title={transcribing ? 'Parar transcrição' : 'Transcrever a chamada'}
-          onClick={toggleTranscription}
-        >
-          <Captions size={19} />
-        </button>
-      )}
-      {transcriptionAvailable() && (
-        <button
-          className={cx('control-btn', transcriptOpen && 'on')}
-          title="Ver transcrição"
-          onClick={() => useVoice.setState({ transcriptOpen: !transcriptOpen })}
-        >
-          <ScrollText size={19} />
-        </button>
-      )}
       <span className="control-divider" />
       <button className="control-btn hangup" title="Desconectar" onClick={() => voice.leave()}>
         <PhoneOff size={19} />
       </button>
-    </div>
-  );
-}
-
-function formatClock(ts: number) {
-  return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
-function downloadTranscript(channel: Channel, startedAt: number, entries: TranscriptEntry[]) {
-  const s = getState();
-  const title = channelLabel(s, channel);
-  const lines = entries.map((e) => `[${formatClock(e.at)}] ${nameOf(s, e.user_id, channel.guild_id)}: ${e.text}`);
-  const date = new Date(startedAt).toLocaleString('pt-BR');
-  const blob = new Blob([`Transcrição — ${title}\nIniciada em ${date}\n\n${lines.join('\n')}\n`], { type: 'text/plain;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `transcricao-${title.replace(/[^\p{L}\p{N}]+/gu, '-')}-${new Date(startedAt).toISOString().slice(0, 10)}.txt`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-}
-
-function formatDuration(ms: number) {
-  const min = Math.max(1, Math.round(ms / 60_000));
-  return min < 60 ? `${min} min` : `${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}`;
-}
-
-function useAutoScroll(dep: number) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [dep]);
-  return ref;
-}
-
-function LiveTranscript({ channel }: { channel: Channel }) {
-  const t = useStore((s) => s.transcriptions[channel.id]);
-  const entries = t?.entries ?? [];
-  const inCall = useVoice((s) => s.channelId === channel.id);
-  const listRef = useAutoScroll(entries.length);
-  return (
-    <>
-      {entries.length > 0 && (
-        <div className="transcript-toolbar">
-          <span className="small muted">{entries.length} falas</span>
-          <button className="btn btn-secondary small" onClick={() => downloadTranscript(channel, t?.started_at ?? Date.now(), entries)}>
-            <Download size={14} /> Baixar .txt
-          </button>
-        </div>
-      )}
-      <div className="transcript-list scroll" ref={listRef}>
-        {!entries.length && (
-          <div className="transcript-empty">
-            <Captions size={28} />
-            {t?.active ? (
-              <p>Ouvindo… As falas aparecem aqui alguns segundos depois de cada frase.</p>
-            ) : (
-              <>
-                <p>
-                  Transforme a conversa em texto, com o nome de quem falou. O áudio é processado no seu servidor e a transcrição fica salva neste canal (aba
-                  “Salvas”), visível para quem pode ver o canal.
-                </p>
-                {inCall && (
-                  <button className="btn btn-primary small" onClick={() => void voice.setTranscription(true)}>
-                    Iniciar transcrição
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        )}
-        {entries.map((e) => (
-          <TranscriptLine key={e.id} userId={e.user_id} guildId={channel.guild_id} at={e.at} text={e.text} />
-        ))}
-      </div>
-    </>
-  );
-}
-
-function SavedList({ channel, onOpen }: { channel: Channel; onOpen: (id: string) => void }) {
-  const [items, setItems] = useState<SavedTranscript[] | null>(null);
-  // Refresh when a live session starts or ends.
-  const liveKey = useStore((s) => `${s.transcriptions[channel.id]?.active}-${s.transcriptions[channel.id]?.entries.length ?? 0}`);
-  useEffect(() => {
-    api<SavedTranscript[]>(`/channels/${channel.id}/transcripts`)
-      .then(setItems)
-      .catch((e: Error) => toast(e.message));
-  }, [channel.id, liveKey]);
-
-  if (!items) return <div className="center pad"><Spinner /></div>;
-  if (!items.length) {
-    return (
-      <div className="transcript-empty">
-        <ScrollText size={28} />
-        <p>Nenhuma transcrição salva neste canal ainda. Elas aparecem aqui assim que alguém transcreve uma chamada.</p>
-      </div>
-    );
-  }
-  return (
-    <div className="transcript-list scroll">
-      {items.map((t) => (
-        <SavedCard key={t.id} t={t} guildId={channel.guild_id} onOpen={() => onOpen(t.id)} />
-      ))}
-    </div>
-  );
-}
-
-function SavedCard({ t, guildId, onOpen }: { t: SavedTranscript; guildId: string | null; onOpen: () => void }) {
-  const names = useStore((s) => t.speaker_ids.map((id) => nameOf(s, id, guildId)).join(', '));
-  const date = new Date(t.started_at).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-  return (
-    <button className="saved-card" onClick={onOpen}>
-      <div className="row gap-8">
-        <strong>{date}</strong>
-        {t.active ? <span className="live-badge">Em andamento</span> : <span className="small muted">{formatDuration((t.ended_at ?? Date.now()) - t.started_at)}</span>}
-      </div>
-      <div className="saved-card-meta">
-        <span className="avatar-stack">
-          {t.speaker_ids.slice(0, 4).map((id) => (
-            <Avatar key={id} userId={id} size={20} guildId={guildId} />
-          ))}
-        </span>
-        <span className="small muted truncate">
-          {t.entry_count} falas · {names}
-        </span>
-      </div>
-    </button>
-  );
-}
-
-function SavedDetail({ channel, id, onBack }: { channel: Channel; id: string; onBack: () => void }) {
-  const [t, setT] = useState<SavedTranscript | null>(null);
-  const meId = useStore((s) => s.me?.id);
-  const listRef = useAutoScroll(t?.entries?.length ?? 0);
-  useEffect(() => {
-    api<SavedTranscript>(`/transcripts/${id}`)
-      .then(setT)
-      .catch((e: Error) => toast(e.message));
-  }, [id]);
-
-  const canDelete = !!t && (t.started_by === meId || (!!channel.guild_id && has(channel.permissions, P.MANAGE_MESSAGES)));
-  const remove = () =>
-    openModal({
-      type: 'confirm',
-      title: 'Excluir transcrição',
-      body: 'A transcrição será apagada para todos. Isso não pode ser desfeito.',
-      confirmLabel: 'Excluir',
-      onConfirm: async () => {
-        await api(`/transcripts/${id}`, { method: 'DELETE' });
-        closeModal();
-        onBack();
-      },
-    });
-
-  return (
-    <>
-      <div className="transcript-toolbar">
-        <button className="icon-btn" title="Voltar" onClick={onBack}>
-          <ArrowLeft size={17} />
-        </button>
-        <span className="small muted grow truncate">{t ? new Date(t.started_at).toLocaleString('pt-BR') : ''}</span>
-        <button className="icon-btn" title="Baixar .txt" disabled={!t?.entries?.length} onClick={() => t && downloadTranscript(channel, t.started_at, t.entries ?? [])}>
-          <Download size={17} />
-        </button>
-        {canDelete && (
-          <button className="icon-btn danger" title="Excluir" onClick={remove}>
-            <Trash2 size={17} />
-          </button>
-        )}
-      </div>
-      <div className="transcript-list scroll" ref={listRef}>
-        {!t && (
-          <div className="center pad">
-            <Spinner />
-          </div>
-        )}
-        {t?.entries?.map((e) => <TranscriptLine key={e.id} userId={e.user_id} guildId={channel.guild_id} at={e.at} text={e.text} />)}
-      </div>
-    </>
-  );
-}
-
-export function TranscriptPanel({ channel }: { channel: Channel }) {
-  const active = useStore((s) => !!s.transcriptions[channel.id]?.active);
-  const inCall = useVoice((s) => s.channelId === channel.id);
-  const [tab, setTab] = useState<'live' | 'saved'>(inCall || active ? 'live' : 'saved');
-  const [openId, setOpenId] = useState<string | null>(null);
-
-  return (
-    <aside className="side-panel transcript-panel">
-      <div className="popout-header">
-        <div className="segmented">
-          <button className={cx(tab === 'live' && 'active')} onClick={() => setTab('live')}>
-            {active && <span className="rec-dot" />} Ao vivo
-          </button>
-          <button
-            className={cx(tab === 'saved' && 'active')}
-            onClick={() => {
-              setTab('saved');
-              setOpenId(null);
-            }}
-          >
-            Salvas
-          </button>
-        </div>
-        <button className="icon-btn" title="Fechar" onClick={() => useVoice.setState({ transcriptOpen: false })}>
-          <X size={17} />
-        </button>
-      </div>
-      {tab === 'live' ? (
-        <LiveTranscript channel={channel} />
-      ) : openId ? (
-        <SavedDetail channel={channel} id={openId} onBack={() => setOpenId(null)} />
-      ) : (
-        <SavedList channel={channel} onOpen={setOpenId} />
-      )}
-    </aside>
-  );
-}
-
-function TranscriptLine({ userId, guildId, at, text }: { userId: string; guildId: string | null; at: number; text: string }) {
-  const name = useStore((s) => nameOf(s, userId, guildId));
-  return (
-    <div className="transcript-line">
-      <Avatar userId={userId} size={28} guildId={guildId} />
-      <div className="transcript-text">
-        <div className="row gap-8">
-          <strong>{name}</strong>
-          <span className="small muted">{formatClock(at)}</span>
-        </div>
-        <p>{text}</p>
-      </div>
     </div>
   );
 }
@@ -713,7 +415,6 @@ function StreamBadge({ channelId }: { channelId: string }) {
 
 export function VoiceView({ channel }: { channel: Channel }) {
   const count = useParticipants(channel.id).length;
-  const transcriptOpen = useVoice((s) => s.transcriptOpen);
   const chatOpen = useVoice((s) => s.chatOpen);
   const hideNoVideo = useVoice((s) => s.hideNoVideo);
   const unread = useStore((s) => isUnread(s, channel));
@@ -734,18 +435,11 @@ export function VoiceView({ channel }: { channel: Channel }) {
             {hideNoVideo ? <EyeOff size={20} /> : <Eye size={20} />}
           </button>
           <button
-            className={cx('icon-btn', chatOpen && !transcriptOpen && 'active', unread && !chatOpen && 'has-unread')}
+            className={cx('icon-btn', chatOpen && 'active', unread && !chatOpen && 'has-unread')}
             title="Chat de texto da sala"
-            onClick={() => useVoice.setState({ chatOpen: !(chatOpen && !transcriptOpen), transcriptOpen: false })}
+            onClick={() => useVoice.setState({ chatOpen: !chatOpen })}
           >
             <MessageSquare size={20} />
-          </button>
-          <button
-            className={cx('icon-btn', transcriptOpen && 'active')}
-            title="Transcrições"
-            onClick={() => useVoice.setState({ transcriptOpen: !transcriptOpen, chatOpen: false })}
-          >
-            <ScrollText size={20} />
           </button>
         </div>
       </header>
@@ -754,9 +448,9 @@ export function VoiceView({ channel }: { channel: Channel }) {
           <VoiceStage channel={channel} />
           <VoiceControls channel={channel} />
         </div>
-        {(transcriptOpen || chatOpen) && (
+        {chatOpen && (
           <ResizablePanel storageKey="concord.voicePanelWidth">
-            {transcriptOpen ? <TranscriptPanel channel={channel} /> : <VoiceChatPanel channel={channel} />}
+            <VoiceChatPanel channel={channel} />
           </ResizablePanel>
         )}
       </div>

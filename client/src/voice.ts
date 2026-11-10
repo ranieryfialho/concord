@@ -4,9 +4,8 @@ import { api } from './api';
 import { gateway } from './gateway';
 import { type InputProfile, MicPipeline, type MicPrefs, type NoiseMode, micConstraints, micProcessor, micSettings } from './mic';
 import { sounds } from './sounds';
-import { SpeechCapture } from './speech';
-import { getState, setState, toast } from './store';
-import type { Transcription, VoiceState } from './types';
+import { getState, toast } from './store';
+import type { VoiceState } from './types';
 
 // Two media backends behind one API:
 //  - "mesh": WebRTC peer-to-peer, one RTCPeerConnection per peer, signaling relayed by the
@@ -39,7 +38,6 @@ interface VoiceUI {
   videoDeviceId: string;
   /** Bumped when a local track is swapped inside the same stream, so previews re-render. */
   deviceTick: number;
-  transcriptOpen: boolean;
   /** Text chat panel next to a voice channel. */
   chatOpen: boolean;
   /** Per-person playback volume in percent (100 = untouched, up to 200), only on this device. */
@@ -165,9 +163,8 @@ export const useVoice = create<VoiceUI>()(() => ({
   localCamera: null,
   localScreens: [],
   deviceTick: 0,
-  transcriptOpen: false,
   // On a phone the room chat would cover the whole stage, so it starts closed there.
-  chatOpen: !window.matchMedia('(max-width: 720px)').matches,
+  chatOpen: false,
   pttActive: false,
   ...loadPrefs(),
 }));
@@ -188,7 +185,6 @@ interface VoiceConfig {
   livekit_url: string | null;
   ice_servers: RTCIceServer[];
   ttl: number;
-  transcription: 'local' | 'api' | 'off';
 }
 
 const FALLBACK_CONFIG: VoiceConfig = {
@@ -196,12 +192,7 @@ const FALLBACK_CONFIG: VoiceConfig = {
   livekit_url: null,
   ice_servers: [{ urls: ['stun:stun.l.google.com:19302'] }],
   ttl: 3600,
-  transcription: 'off',
 };
-
-export function transcriptionAvailable(): boolean {
-  return (cachedConfig?.value.transcription ?? 'off') !== 'off';
-}
 
 function cameraConstraints(deviceId: string): MediaTrackConstraints {
   return { deviceId: deviceId ? { exact: deviceId } : undefined, width: 1280, height: 720, frameRate: 30 };
@@ -359,7 +350,6 @@ class VoiceManager {
   private analysers = new Map<string, () => void>();
   private awaitingJoin: string | null = null;
   private rejoin: { guildId: string | null; channelId: string } | null = null;
-  private capture: SpeechCapture | null = null;
 
   guildId() {
     return useVoice.getState().guildId;
@@ -397,7 +387,6 @@ class VoiceManager {
 
     if (config.mode === 'livekit') {
       await this.connectLiveKit(channelId);
-      void this.loadTranscription(channelId);
       return;
     }
 
@@ -426,54 +415,11 @@ class VoiceManager {
     for (const v of Object.values(getState().voiceStates)) {
       if (v.channel_id === channelId && v.user_id !== this.meId()) this.call(v.user_id);
     }
-    void this.loadTranscription(channelId);
-  }
-
-  // ---------- Transcription ----------
-
-  private async loadTranscription(channelId: string) {
-    try {
-      const t = await api<Transcription>(`/voice/transcription/${channelId}`);
-      setState((s) => ({ transcriptions: { ...s.transcriptions, [channelId]: t } }));
-    } catch {
-      /* feature disabled or not allowed */
-    }
-    this.syncTranscription();
-  }
-
-  /** Starts/stops sending our own microphone for transcription to match the call's state. */
-  syncTranscription() {
-    const { channelId } = useVoice.getState();
-    const active = !!channelId && !!getState().transcriptions[channelId]?.active;
-    const stream = active ? this.micStream() : null;
-    if (this.capture && (!active || !stream)) {
-      this.capture.stop();
-      this.capture = null;
-    }
-    if (active && stream && !this.capture) this.capture = new SpeechCapture(stream, channelId!);
-  }
-
-  async setTranscription(enabled: boolean) {
-    const { channelId } = useVoice.getState();
-    if (!channelId) return;
-    try {
-      await api('/voice/transcription', { body: { channel_id: channelId, enabled } });
-    } catch (e) {
-      toast((e as Error).message);
-    }
-  }
-
-  private micStream(): MediaStream | null {
-    if (this.mic) return this.mic;
-    const track = this.room?.localParticipant.getTrackPublication(livekit!.Track.Source.Microphone)?.track?.mediaStreamTrack;
-    return track ? new MediaStream([track]) : null;
   }
 
   leave(notifyServer = true) {
     const ui = useVoice.getState();
     if (!ui.channelId) return;
-    this.capture?.stop();
-    this.capture = null;
     for (const uid of [...this.peers.keys()]) this.closePeer(uid);
     this.releaseMic();
     if (this.room) {
@@ -485,6 +431,7 @@ class VoiceManager {
     this.lkAudio.clear();
     ui.localCamera?.getTracks().forEach((t) => t.stop());
     for (const screen of ui.localScreens) screen.getTracks().forEach((t) => t.stop());
+    void window.ConcordNative?.screen.audioStop?.();
     this.extraScreens = new WeakSet();
     this.screenSources.clear();
     for (const stop of this.analysers.values()) stop();
@@ -1140,6 +1087,7 @@ class VoiceManager {
       }
       this.extraScreens.add(stream);
     }
+    if (!extra && !stream.getAudioTracks().length) await this.addLinuxSystemAudio(stream);
     const audio = stream.getAudioTracks()[0];
     const surface = (stream.getVideoTracks()[0]?.getSettings() as MediaTrackSettings & { displaySurface?: string }).displaySurface;
     const restricted = (audio?.getSettings() as (MediaTrackSettings & { restrictOwnAudio?: boolean }) | undefined)?.restrictOwnAudio;
@@ -1151,6 +1099,34 @@ class VoiceManager {
     }
     this.applyScreenSettings(stream);
     return stream;
+  }
+
+  /** Linux desktop app: Electron can't loop system audio back, so the shell exposes it as a virtual microphone. */
+  private async addLinuxSystemAudio(stream: MediaStream) {
+    const screen = window.ConcordNative?.screen;
+    if (!screen?.audioStart) return;
+    const started = await screen.audioStart().catch(() => null);
+    if (!started?.ok || !started.label) return;
+    try {
+      let device: MediaDeviceInfo | undefined;
+      for (let i = 0; i < 20 && !device; i++) {
+        device = (await navigator.mediaDevices.enumerateDevices()).find((d) => d.kind === 'audioinput' && d.label.includes(started.label!));
+        if (!device) await new Promise((r) => setTimeout(r, 150));
+      }
+      if (!device) throw new Error('virtual input not found');
+      const mic = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: { exact: device.deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 },
+      });
+      for (const t of mic.getAudioTracks()) stream.addTrack(t);
+    } catch (err) {
+      console.warn('[screen] system audio unavailable', err);
+      void screen.audioStop?.();
+    }
+  }
+
+  /** Releases the Linux audio routing once no screen with audio is left. */
+  private releaseLinuxAudio() {
+    if (!this.mainScreen()) void window.ConcordNative?.screen.audioStop?.();
   }
 
   /** The chosen quality for the main screen; extra screens are capped so two shares don't choke the upload. */
@@ -1296,6 +1272,7 @@ class VoiceManager {
     this.screenSources.delete(stream.id);
     const remaining = useVoice.getState().localScreens.filter((x) => x !== stream);
     useVoice.setState({ localScreens: remaining, selfStream: remaining.length > 0 });
+    this.releaseLinuxAudio();
     this.sendMeta();
     this.pushState();
   }
@@ -1362,10 +1339,6 @@ class VoiceManager {
       this.analysers.get(me)?.();
       this.analysers.delete(me);
       this.watchSpeaking(me, this.mic);
-      // The transcription capture reads from the old track; restart it on the new one.
-      this.capture?.stop();
-      this.capture = null;
-      this.syncTranscription();
     } catch {
       toast('Não foi possível trocar o microfone');
     }
