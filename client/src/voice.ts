@@ -1087,12 +1087,13 @@ class VoiceManager {
       }
       this.extraScreens.add(stream);
     }
-    if (!extra && !stream.getAudioTracks().length) await this.addLinuxSystemAudio(stream);
+    // The Linux shell's virtual source already leaves Concord's own output (the call's voices) out.
+    const linuxAudio = !extra && !stream.getAudioTracks().length && (await this.addLinuxSystemAudio(stream));
     const audio = stream.getAudioTracks()[0];
     const surface = (stream.getVideoTracks()[0]?.getSettings() as MediaTrackSettings & { displaySurface?: string }).displaySurface;
     const restricted = (audio?.getSettings() as (MediaTrackSettings & { restrictOwnAudio?: boolean }) | undefined)?.restrictOwnAudio;
     // Whole-screen audio without the exclusion would loop the call back to everyone: send video only.
-    if (audio && surface === 'monitor' && restricted !== true) {
+    if (audio && !linuxAudio && surface === 'monitor' && restricted !== true) {
       stream.removeTrack(audio);
       audio.stop();
       toast('Este navegador não consegue separar o áudio da chamada; transmitindo só a imagem.');
@@ -1102,9 +1103,9 @@ class VoiceManager {
   }
 
   /** Linux desktop app: Electron can't loop system audio back, so the shell exposes it as a virtual microphone. */
-  private async addLinuxSystemAudio(stream: MediaStream) {
+  private async addLinuxSystemAudio(stream: MediaStream): Promise<boolean> {
     const screen = window.ConcordNative?.screen;
-    if (!screen?.audioStart) return;
+    if (!screen?.audioStart) return false;
     const started = await screen.audioStart().catch(() => null);
     if (!started?.ok || !started.label) {
       toast(
@@ -1112,7 +1113,7 @@ class VoiceManager {
           ? 'Para transmitir com áudio, instale o pacote pulseaudio-utils (comando pactl). Transmitindo só a imagem.'
           : 'Não foi possível capturar o áudio do computador; transmitindo só a imagem.',
       );
-      return;
+      return false;
     }
     try {
       let device: MediaDeviceInfo | undefined;
@@ -1125,9 +1126,11 @@ class VoiceManager {
         audio: { deviceId: { exact: device.deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 },
       });
       for (const t of mic.getAudioTracks()) stream.addTrack(t);
+      return true;
     } catch (err) {
       console.warn('[screen] system audio unavailable', err);
       void screen.audioStop?.();
+      return false;
     }
   }
 
