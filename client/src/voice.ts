@@ -526,9 +526,8 @@ class VoiceManager {
 
     room.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => this.lkTrack(track, participant, true));
     room.on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => this.lkTrack(track, participant, false));
-    room.on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => {
-      useVoice.setState({ speaking: Object.fromEntries(speakers.map((p) => [p.identity, true])) });
-    });
+    // Speaking rings come from our own analysers (as in mesh): LiveKit's ActiveSpeakersChanged is
+    // smoothed server-side and lingers ~1 s after someone stops talking.
     room.on(RoomEvent.LocalTrackUnpublished, (pub) => {
       // Ended outside our controls (e.g. the system's "stop sharing"): forget that screen.
       if (pub.source !== Track.Source.ScreenShare) return;
@@ -577,9 +576,11 @@ class VoiceManager {
         document.body.appendChild(el);
         this.lkAudio.set(sid, { track: track as RemoteAudioTrack, uid, kind: kind === 'screen' ? 'screen' : 'voice', el });
         this.applyGains(uid);
+        if (kind !== 'screen') this.rewatchSpeaking(uid, track.mediaStreamTrack);
       } else {
         track.detach().forEach((el) => el.remove());
         this.lkAudio.delete(sid);
+        if (kind !== 'screen') this.rewatchSpeaking(uid, null);
       }
       return;
     }
@@ -877,6 +878,8 @@ class VoiceManager {
       () => micSettings(this.micPrefs()),
       (pipe) => {
         this.pipe = pipe;
+        // The processed output: silent while muted or below the sensitivity gate, like what is sent.
+        this.rewatchSpeaking(this.meId(), pipe?.track ?? null);
       },
     );
   }
@@ -968,7 +971,12 @@ class VoiceManager {
       try {
         await this.room.localParticipant.setMicrophoneEnabled(enabled);
         const track = this.lkMicTrack();
-        if (enabled && track && !track.getProcessor()) await track.setProcessor(this.lkProcessor());
+        if (enabled && track && !track.getProcessor()) {
+          await track.setProcessor(this.lkProcessor()).catch((err) => {
+            console.warn('[voice] microphone processing', err);
+            this.rewatchSpeaking(this.meId(), track.mediaStreamTrack); // unprocessed, but still lights up
+          });
+        }
       } catch (err) {
         console.warn('[voice] microphone', err);
         if (enabled) toast('Não foi possível acessar o microfone');
@@ -1453,7 +1461,15 @@ class VoiceManager {
     savePrefs();
   }
 
-  // ---------- Speaking indicator (mesh; LiveKit reports active speakers itself) ----------
+  // ---------- Speaking indicator ----------
+
+  /** Replaces the analyser for `uid` (or just stops it, with no track). */
+  private rewatchSpeaking(uid: string, track: MediaStreamTrack | null) {
+    this.analysers.get(uid)?.();
+    this.analysers.delete(uid);
+    if (track) this.watchSpeaking(uid, new MediaStream([track]));
+    else if (useVoice.getState().speaking[uid]) useVoice.setState((s) => ({ speaking: { ...s.speaking, [uid]: false } }));
+  }
 
   private watchSpeaking(uid: string, stream: MediaStream) {
     if (this.analysers.has(uid) || !stream.getAudioTracks().length) return;
