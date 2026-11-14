@@ -10,6 +10,17 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    id: '2026-11-13',
+    date: '13/11/2026',
+    title: 'Transmissão mais leve e áudio da tela no Linux',
+    items: [
+      { tag: 'melhoria', text: 'Chamadas e transmissões agora passam por um servidor de mídia: quem transmite envia a tela uma vez só, não uma vez para cada pessoa assistindo. Gasta bem menos processador e internet, mantendo a qualidade em 1080p.' },
+      { tag: 'melhoria', text: 'App para Linux: o som do computador agora vai junto também ao transmitir a tela inteira, não só uma janela.' },
+      { tag: 'melhoria', text: 'App para Linux (.deb): o áudio da transmissão passa a funcionar em versões mais antigas do Ubuntu, Debian e Mint.' },
+      { tag: 'novo', text: 'Quando sair uma versão nova do app desktop, esta janela já mostra o botão para baixar e instalar.' },
+    ],
+  },
+  {
     id: '2026-11-10',
     date: '10/11/2026',
     title: 'Áudio no Linux, chat da sala e mais leveza',
