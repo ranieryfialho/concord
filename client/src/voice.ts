@@ -516,7 +516,8 @@ class VoiceManager {
       audioCaptureDefaults: {
         ...micConstraints(ui.inputDeviceId, micSettings(ui)),
         deviceId: ui.inputDeviceId || undefined,
-        processor: this.lkProcessor(),
+        // No `processor` here: livekit-client applies it before the track has an AudioContext and
+        // throws, so the microphone never publishes. It is attached after publishing (applyMicEnabled).
       },
       audioOutput: ui.outputDeviceId ? { deviceId: ui.outputDeviceId } : undefined,
       videoCaptureDefaults: { deviceId: ui.videoDeviceId || undefined, resolution: { width: 1280, height: 720, frameRate: 30 } },
@@ -966,7 +967,10 @@ class VoiceManager {
     if (this.room && channelId) {
       try {
         await this.room.localParticipant.setMicrophoneEnabled(enabled);
-      } catch {
+        const track = this.lkMicTrack();
+        if (enabled && track && !track.getProcessor()) await track.setProcessor(this.lkProcessor());
+      } catch (err) {
+        console.warn('[voice] microphone', err);
         if (enabled) toast('Não foi possível acessar o microfone');
       }
     }
