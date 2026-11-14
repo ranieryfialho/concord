@@ -4023,8 +4023,26 @@ body.col-resizing iframe {
   margin: 0;
 }
 
-.patch-notes section + section {
-  margin-top: 18px;
+.patch-notes-body {
+  position: relative;
+  max-height: 180px;
+  overflow: hidden;
+}
+.patch-notes-body.expanded {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.patch-notes-body.clipped::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 48px;
+  background: linear-gradient(to bottom, transparent, var(--bg-main));
+  pointer-events: none;
+}
+.patch-notes-more {
+  margin-top: 8px;
+  font-weight: 600;
 }
 .patch-notes h4 {
   margin: 0 0 8px;

@@ -12,7 +12,7 @@ export const RELEASES: Release[] = [
   {
     id: '2026-11-13',
     date: '13/11/2026',
-    title: 'Transmissão mais leve e áudio da tela no Linux',
+    title: 'Transmissão mais leve',
     items: [
       { tag: 'melhoria', text: 'Em todos os sistemas (Windows, Linux, macOS e navegador): chamadas e transmissões agora passam por um servidor de mídia. Quem transmite envia a tela uma vez só, não uma vez para cada pessoa assistindo. Gasta bem menos processador e internet, mantendo a qualidade em 1080p.' },
       { tag: 'melhoria', text: 'App para Linux: o som do computador agora vai junto também ao transmitir a tela inteira, não só uma janela.' },

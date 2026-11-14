@@ -1708,6 +1708,15 @@ function PatchNotesModal() {
     return () => clearInterval(t);
   }, []);
   const hasInstaller = status === 'ready' || status === 'manual';
+  // Only the latest release; long notes start clipped with a "Saiba mais" to expand.
+  const release = RELEASES[0];
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (el) setOverflows(el.scrollHeight > el.clientHeight + 1);
+  }, []);
   return (
     <Modal
       title="Novidades"
@@ -1728,20 +1737,23 @@ function PatchNotesModal() {
       }
     >
       <div className="patch-notes">
-        {RELEASES.map((r) => (
-          <section key={r.id}>
-            <h4>
-              {r.title} <span className="small muted">{r.date}</span>
-            </h4>
-            <ul>
-              {r.items.map((it, i) => (
-                <li key={i}>
-                  <span className={`patch-tag ${it.tag}`}>{NOTE_TAGS[it.tag]}</span> {it.text}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
+        <h4>
+          {release.title} <span className="small muted">{release.date}</span>
+        </h4>
+        <div ref={bodyRef} className={`patch-notes-body${expanded ? ' expanded' : ''}${overflows && !expanded ? ' clipped' : ''}`}>
+          <ul>
+            {release.items.map((it, i) => (
+              <li key={i}>
+                <span className={`patch-tag ${it.tag}`}>{NOTE_TAGS[it.tag]}</span> {it.text}
+              </li>
+            ))}
+          </ul>
+        </div>
+        {overflows && (
+          <button className="link patch-notes-more" onClick={() => setExpanded(!expanded)}>
+            {expanded ? 'Mostrar menos' : 'Saiba mais'}
+          </button>
+        )}
       </div>
     </Modal>
   );
