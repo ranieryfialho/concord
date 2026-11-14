@@ -1,6 +1,9 @@
 import crypto from 'node:crypto';
 import { Router } from 'express';
 import { AccessToken } from 'livekit-server-sdk';
+import { getUser } from '../models.js';
+import { P, has, requireChannel } from '../permissions.js';
+import { HttpError } from '../util.js';
 
 export const voiceRouter = Router();
 
@@ -45,4 +48,26 @@ voiceRouter.get('/voice/config', (req, res) => {
     ice_servers: iceServers(req.userId),
     ttl: TURN_TTL,
   });
+});
+
+voiceRouter.post('/voice/livekit-token', async (req, res) => {
+  if (!livekitEnabled) throw new HttpError(400, 'LiveKit não está configurado neste servidor');
+  const { channel, perms } = requireChannel(req.userId, String(req.body?.channel_id ?? ''), P.CONNECT);
+  if (channel.type !== 'voice' && channel.type !== 'dm' && channel.type !== 'group_dm') {
+    throw new HttpError(400, 'Este canal não tem voz');
+  }
+  const user = getUser(req.userId)!;
+  const token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
+    identity: user.id,
+    name: user.display_name ?? user.username,
+    ttl: '6h',
+  });
+  token.addGrant({
+    room: `concord-${channel.id}`,
+    roomJoin: true,
+    canSubscribe: true,
+    canPublish: has(perms, P.SPEAK) || has(perms, P.STREAM),
+    canPublishData: false,
+  });
+  res.json({ url: LIVEKIT_URL, token: await token.toJwt() });
 });
