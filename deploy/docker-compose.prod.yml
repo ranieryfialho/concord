@@ -54,6 +54,34 @@ services:
       - --denied-peer-ip=172.16.0.0-172.31.255.255
       - --denied-peer-ip=192.168.0.0-192.168.255.255
 
+  # SFU para voz e transmissão: quem transmite envia um fluxo só, e o LiveKit repassa para cada
+  # espectador (sem ele a chamada é P2P e o transmissor codifica um fluxo por pessoa).
+  # Só sobe com COMPOSE_PROFILES=livekit no .env (junto com LIVEKIT_* preenchidos).
+  # No NPM: Proxy Host LIVEKIT_DOMAIN -> http://concord-livekit:7880, "Websockets Support" ligado, SSL.
+  # Firewall da VPS: liberar 7881/tcp e 7882/udp (mídia; a sinalização passa pelo NPM).
+  livekit:
+    image: livekit/livekit-server:v1.13.10
+    container_name: concord-livekit
+    profiles: ["livekit"]
+    restart: unless-stopped
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-}: ${LIVEKIT_API_SECRET:-}"
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: true
+        logging:
+          level: info
+    ports:
+      - "7881:7881/tcp"
+      - "7882:7882/udp"
+    networks:
+      - proxy
+    cpus: ${LIVEKIT_CPUS:-1}
+    mem_limit: ${LIVEKIT_MEMORY:-512m}
+
 volumes:
   concord-data:
 
